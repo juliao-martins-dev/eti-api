@@ -161,12 +161,14 @@ class Prezensa(models.Model):
     properties below rebuild the printed layout from those punches.
     """
 
-    class Estadu(models.TextChoices):
-        PREZENTE = 'PREZENTE', _('Prezente')
-        FALTA = 'FALTA', _('Falta')
-        LISENSA = 'LISENSA', _('Lisensa')
-        MISAUN = 'MISAUN', _('Misaun')
-        FERIADU = 'FERIADU', _('Feriadu')
+    class Status(models.TextChoices):
+        # English keys, Tetun labels: the stored value is API contract, the
+        # label is what users read.
+        PRESENT = 'PRESENT', _('Prezente')
+        ABSENT = 'ABSENT', _('Falta')
+        LEAVE = 'LEAVE', _('Lisensa')
+        MISSION = 'MISSION', _('Misaun')
+        HOLIDAY = 'HOLIDAY', _('Feriadu')
 
     #: Re-exported so callers do not need to import the module-level choices.
     Sesaun = Sesaun
@@ -189,11 +191,11 @@ class Prezensa(models.Model):
     )
     data = models.DateField(_('data'))
 
-    estadu = models.CharField(
-        _('estadu'),
+    status = models.CharField(
+        _('status'),
         max_length=10,
-        choices=Estadu.choices,
-        default=Estadu.PREZENTE,
+        choices=Status.choices,
+        default=Status.PRESENT,
     )
     # OBS
     obs = models.TextField(_('obs'), blank=True)
@@ -315,9 +317,9 @@ class Prezensa(models.Model):
             longitude=longitude,
             presizaun=presizaun,
         )
-        if self.estadu != self.Estadu.PREZENTE:
-            self.estadu = self.Estadu.PREZENTE
-            self.save(update_fields=['estadu'])
+        if self.status != self.Status.PRESENT:
+            self.status = self.Status.PRESENT
+            self.save(update_fields=['status'])
 
         # Drop the cached punches so the `oras_*` properties see the new one.
         self.refresh_from_db()
