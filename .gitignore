@@ -1,0 +1,21 @@
+# Secrets -- never commit; copy .env.example to .env and fill it in.
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Django
+db.sqlite3
+staticfiles/
+
+# Uploaded files: teacher photos and punch evidence.
+media/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
