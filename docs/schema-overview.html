@@ -206,7 +206,7 @@ erDiagram
         bigint id PK
         bigint lista_id FK
         date data
-        string estadu "PREZENTE|FALTA|..."
+        string status "PRESENT|ABSENT|LEAVE|..."
         text obs
     }
     Marka {
@@ -364,7 +364,7 @@ erDiagram
         <tr><td class="name">id</td><td class="type">BigAutoField</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
         <tr><td class="name">lista_id</td><td class="type">FK → ListaPrezensa</td><td class="note"><span class="badge b-fk">FK</span> see below.</td></tr>
         <tr><td class="name">data</td><td class="type">DateField</td><td class="note">The calendar day (DATA column).</td></tr>
-        <tr><td class="name">estadu</td><td class="type">CharField(10), choices</td><td class="note">PREZENTE · FALTA · LISENSA · MISAUN · FERIADU. Set to PREZENTE by any punch.</td></tr>
+        <tr><td class="name">status</td><td class="type">CharField(10), choices</td><td class="note">PRESENT · ABSENT · LEAVE · MISSION · HOLIDAY. Set to PRESENT by any punch. Stored values are English; the label shown to users stays Tetun (<code>status_display</code> → “Prezente”, “Lisensa”…).</td></tr>
         <tr><td class="name">obs</td><td class="type">TextField</td><td class="note">The OBS column of the sheet.</td></tr>
       </tbody>
     </table>
