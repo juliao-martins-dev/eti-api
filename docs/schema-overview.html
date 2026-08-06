@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ETI-Dili API — Schema Overview</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #fafbfc;
+    --border: #e3e6ea;
+    --text: #1b1f24;
+    --muted: #62696f;
+    --accent: #2563eb;
+    --fk: #2563eb;
+    --fk-bg: #e8efff;
+    --o2o: #7c3aed;
+    --o2o-bg: #f1e9ff;
+    --m2m: #0d9488;
+    --m2m-bg: #dcf5f1;
+    --pk: #b45309;
+    --pk-bg: #fdf0d9;
+    --derived: #4b5563;
+    --derived-bg: #eceef1;
+    --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 12px rgba(16,24,40,.04);
+    --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216;
+      --surface: #171b21;
+      --surface-2: #1c2129;
+      --border: #2a313a;
+      --text: #e6e9ee;
+      --muted: #9aa4b0;
+      --accent: #7aa2ff;
+      --fk: #9ab6ff; --fk-bg: #1b2740;
+      --o2o: #c4a6ff; --o2o-bg: #2a2140;
+      --m2m: #6ad7c9; --m2m-bg: #143430;
+      --pk: #f0be6a; --pk-bg: #3a2c14;
+      --derived: #aab3bd; --derived-bg: #242a32;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 14px rgba(0,0,0,.25);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 20px 80px;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; }
+
+  header.page {
+    padding: 48px 0 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 36px;
+  }
+  header.page h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -.02em; }
+  header.page p { margin: 0; color: var(--muted); max-width: 68ch; }
+  .meta { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .meta span {
+    font-size: 12px; color: var(--muted); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 11px;
+  }
+
+  h2.app {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--muted); margin: 48px 0 16px; font-weight: 600;
+  }
+  h2.app::before {
+    content: ""; display: inline-block; width: 8px; height: 8px;
+    background: var(--accent); border-radius: 2px; margin-right: 9px;
+    vertical-align: middle;
+  }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 22px; margin-bottom: 20px;
+  }
+  .diagram { overflow-x: auto; padding: 8px; }
+  .diagram .mermaid { min-width: 720px; }
+
+  .card { padding: 0; overflow: hidden; }
+  .card > .head {
+    padding: 18px 22px; border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .card h3 {
+    margin: 0 0 4px; font-size: 18px; letter-spacing: -.01em;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .card h3 code {
+    font-size: 12px; font-weight: 500; color: var(--muted);
+    background: var(--bg); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 6px;
+  }
+  .card .summary { margin: 8px 0 0; color: var(--muted); max-width: 82ch; }
+  .card > .body { padding: 18px 22px 22px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--muted); font-weight: 600;
+    padding: 0 10px 8px 0; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.name { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; white-space: nowrap; }
+  td.type { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; white-space: nowrap; }
+  td.note { color: var(--muted); }
+
+  .badge {
+    display: inline-block; font-size: 10.5px; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 5px; vertical-align: middle;
+  }
+  .b-fk { color: var(--fk); background: var(--fk-bg); }
+  .b-o2o { color: var(--o2o); background: var(--o2o-bg); }
+  .b-m2m { color: var(--m2m); background: var(--m2m-bg); }
+  .b-pk { color: var(--pk); background: var(--pk-bg); }
+  .b-derived { color: var(--derived); background: var(--derived-bg); }
+
+  .sub {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: var(--muted); font-weight: 600; margin: 26px 0 10px;
+  }
+  .rel {
+    border-left: 3px solid var(--fk); background: var(--surface-2);
+    border-radius: 0 8px 8px 0; padding: 12px 16px; margin-bottom: 10px;
+  }
+  .rel.m2m { border-left-color: var(--m2m); }
+  .rel .line1 { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; margin-bottom: 4px; }
+  .rel .plain { color: var(--muted); font-size: 13.5px; }
+  .rel .plain strong { color: var(--text); font-weight: 600; }
+
+  ul.notes { margin: 0; padding-left: 20px; color: var(--muted); }
+  ul.notes li { margin-bottom: 6px; }
+  ul.notes code, p code, .plain code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px; background: var(--bg); border: 1px solid var(--border);
+    padding: 1px 5px; border-radius: 5px;
+  }
+
+  .legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .legend div { display: flex; align-items: center; gap: 7px; }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="page">
+  <h1>ETI-Dili Attendance API — Schema Overview</h1>
+  <p>
+    Every model in the project, what it stores, and how the tables hang together.
+    The system replaces the paper book <em>“LISTA PREZENSA BA PROFESÓR/A ETI DILI”</em>:
+    a monthly sheet per teacher, four punches a day, a handwritten signature next to each.
+    In the database the signature has become a photo plus GPS coordinates.
+  </p>
+  <div class="meta">
+    <span>Django 6.0</span>
+    <span>PostgreSQL</span>
+    <span>2 project apps</span>
+    <span>4 project models</span>
+    <span>Field names in Tetun</span>
+  </div>
+</header>
+
+<h2 class="app">Entity relationships</h2>
+<div class="panel diagram">
+  <pre class="mermaid">
+erDiagram
+    User ||--o{ ListaPrezensa : "lista_prezensa"
+    ListaPrezensa ||--o{ Prezensa : "prezensa"
+    Prezensa ||--o{ Marka : "marka"
+    User }o--o{ Group : "groups"
+    User }o--o{ Permission : "user_permissions"
+    User ||--o{ OutstandingToken : "issued to"
+    OutstandingToken ||--o| BlacklistedToken : "revoked by"
+
+    User {
+        bigint id PK
+        int numeru_id UK "school staff number"
+        string email UK "login field"
+        string naran_kompletu
+        string role "ADMIN|PROFESSOR|ESTUDANTE"
+        string kargu
+        image foto
+    }
+    ListaPrezensa {
+        bigint id PK
+        bigint profesor_id FK
+        string kargu "frozen at issue"
+        smallint fulan "month 1-12"
+        smallint tinan "year"
+        datetime kriadu_iha
+    }
+    Prezensa {
+        bigint id PK
+        bigint lista_id FK
+        date data
+        string estadu "PREZENTE|FALTA|..."
+        text obs
+    }
+    Marka {
+        bigint id PK
+        bigint prezensa_id FK
+        string sesaun "DADER|LOROKRAIK"
+        string tipu "TAMA|FILA"
+        time oras
+        image foto "evidence"
+        decimal latitude
+        decimal longitude
+        float distansia_metru
+        boolean iha_eskola
+    }
+  </pre>
+</div>
+
+<div class="panel">
+  <div class="legend">
+    <div><span class="badge b-pk">PK / UK</span> primary or unique key</div>
+    <div><span class="badge b-fk">FK</span> ForeignKey (many-to-one)</div>
+    <div><span class="badge b-o2o">1:1</span> OneToOneField</div>
+    <div><span class="badge b-m2m">M2M</span> ManyToManyField</div>
+    <div><span class="badge b-derived">derived</span> computed, not a column</div>
+  </div>
+</div>
+
+<!-- ────────────────────────────── accounts ────────────────────────────── -->
+<h2 class="app">accounts</h2>
+
+<div class="panel card">
+  <div class="head">
+    <h3>User <code>accounts_user</code> <span class="badge b-pk">AUTH_USER_MODEL</span></h3>
+    <p class="summary">
+      Every person who can log in — teachers, administrators, and eventually students —
+      built on <code>AbstractUser</code> with <strong>email as the login field</strong>
+      (<code>username</code> is removed entirely). The teaching fields mirror the
+      “Dadus Professores” table published on the school site, so a user row is both an
+      account and the teacher’s personnel record.
+    </p>
+  </div>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:24%">Field</th><th style="width:26%">Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="name">id</td><td class="type">BigAutoField</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+        <tr><td class="name">numeru_id</td><td class="type">PositiveIntegerField</td><td class="note"><span class="badge b-pk">unique</span> required — the number identifying the teacher on every school list. Min value 1.</td></tr>
+        <tr><td class="name">email</td><td class="type">EmailField</td><td class="note"><span class="badge b-pk">unique</span> <code>USERNAME_FIELD</code> — used to log in.</td></tr>
+        <tr><td class="name">naran_kompletu</td><td class="type">CharField(150)</td><td class="note">Full name (NARAN KOMPLETU). Backs <code>get_full_name()</code>.</td></tr>
+        <tr><td class="name">role</td><td class="type">CharField(20), choices</td><td class="note">ADMIN · PROFESSOR · ESTUDANTE. Defaults to PROFESSOR.</td></tr>
+        <tr><td class="name">sexu</td><td class="type">CharField(4), choices</td><td class="note">MANE / FETO — backs the male/female totals on the school site.</td></tr>
+        <tr><td class="name">kargu</td><td class="type">CharField(120)</td><td class="note">Position: Diretor, Vice Diretor I, GAT, Chefe Dep. TLP… Free text, values vary too much to enumerate.</td></tr>
+        <tr><td class="name">habilitasaun_literaria</td><td class="type">CharField(120)</td><td class="note">Academic qualification.</td></tr>
+        <tr><td class="name">disiplina_hanorin</td><td class="type">CharField(255)</td><td class="note">Subject(s) taught — a teacher may hold several.</td></tr>
+        <tr><td class="name">nu_kontaktu</td><td class="type">CharField(20)</td><td class="note">Phone number.</td></tr>
+        <tr><td class="name">foto</td><td class="type">ImageField</td><td class="note">Profile photo, <code>upload_to='fotos/'</code>. The only field a teacher may change about themselves.</td></tr>
+        <tr><td class="name">nivel_edukasaun</td><td class="type">CharField(20), choices</td><td class="note">Ensinu Sekundáriu → Doutoramentu.</td></tr>
+        <tr><td class="name">area_estudu</td><td class="type">CharField(120)</td><td class="note">Field of study: Gestão Informática, Engenharia Civil…</td></tr>
+        <tr><td class="name">password</td><td class="type">CharField(128)</td><td class="note">Inherited. Hashed.</td></tr>
+        <tr><td class="name">is_active / is_staff / is_superuser</td><td class="type">BooleanField</td><td class="note">Inherited. <code>is_staff</code> or <code>role=ADMIN</code> unlocks the school-wide report.</td></tr>
+        <tr><td class="name">last_login / date_joined</td><td class="type">DateTimeField</td><td class="note">Inherited. <code>last_login</code> is written on every JWT login.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Derived, not stored</div>
+    <table>
+      <tbody>
+        <tr><td class="name">is_professor</td><td class="type">property → bool</td><td class="note"><span class="badge b-derived">derived</span> <code>role == PROFESSOR</code></td></tr>
+        <tr><td class="name">get_short_name()</td><td class="type">method → str</td><td class="note"><span class="badge b-derived">derived</span> first word of the full name.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Relationships</div>
+    <div class="rel m2m">
+      <div class="line1"><span class="badge b-m2m">M2M</span> groups → <strong>auth.Group</strong> · related_name <code>user_set</code></div>
+      <div class="plain">Inherited from <code>PermissionsMixin</code>. <strong>One user belongs to many groups, and one group holds many users.</strong> Unused so far.</div>
+    </div>
+    <div class="rel m2m">
+      <div class="line1"><span class="badge b-m2m">M2M</span> user_permissions → <strong>auth.Permission</strong> · related_name <code>user_set</code></div>
+      <div class="plain">Inherited. <strong>One user may hold many individual permissions.</strong> The API gates on <code>role</code> instead.</div>
+    </div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">reverse FK</span> ← <strong>attendance.ListaPrezensa</strong> · <code>user.lista_prezensa</code></div>
+      <div class="plain"><strong>One teacher has many monthly attendance sheets</strong> — one per month they worked.</div>
+    </div>
+
+    <div class="sub">Constraints &amp; behaviour</div>
+    <ul class="notes">
+      <li><code>USERNAME_FIELD = 'email'</code>, <code>REQUIRED_FIELDS = ['numeru_id', 'naran_kompletu']</code> — <code>createsuperuser</code> prompts for both.</li>
+      <li>Default ordering by <code>naran_kompletu</code>.</li>
+      <li><code>UserManager.create_user()</code> refuses a missing email or <code>numeru_id</code> with a clear error rather than an IntegrityError.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ────────────────────────────── attendance ────────────────────────────── -->
+<h2 class="app">attendance</h2>
+
+<div class="panel card">
+  <div class="head">
+    <h3>ListaPrezensa <code>attendance_listaprezensa</code></h3>
+    <p class="summary">
+      One printed sheet: a single teacher for a single month. It holds the header block of
+      the paper form (Naran, Kargu, Fulan/Tinan) while the day-by-day grid lives in
+      <code>Prezensa</code>. Created automatically by the first punch of a month — there is
+      no separate “open the sheet” step.
+    </p>
+  </div>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:24%">Field</th><th style="width:26%">Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="name">id</td><td class="type">BigAutoField</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+        <tr><td class="name">profesor_id</td><td class="type">FK → accounts.User</td><td class="note"><span class="badge b-fk">FK</span> see below.</td></tr>
+        <tr><td class="name">kargu</td><td class="type">CharField(120)</td><td class="note">Snapshot of the teacher’s position <em>at the time the sheet was issued</em>. The only field copied from the user; filled in <code>save()</code>, never by callers.</td></tr>
+        <tr><td class="name">fulan</td><td class="type">PositiveSmallIntegerField, choices</td><td class="note">Month 1–12, labelled in Tetun (Janeiru…Dezembru).</td></tr>
+        <tr><td class="name">tinan</td><td class="type">PositiveSmallIntegerField</td><td class="note">Year, validated 2000–2100.</td></tr>
+        <tr><td class="name">kriadu_iha</td><td class="type">DateTimeField</td><td class="note"><code>auto_now_add</code> — when the sheet was opened.</td></tr>
+        <tr><td class="name">atualiza_iha</td><td class="type">DateTimeField</td><td class="note"><code>auto_now</code></td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Relationships</div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">FK</span> profesor → <strong>accounts.User</strong> · related_name <code>lista_prezensa</code> · on_delete CASCADE</div>
+      <div class="plain"><strong>One teacher has many monthly sheets; each sheet belongs to exactly one teacher.</strong> Deleting the user deletes their whole attendance history.</div>
+    </div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">reverse FK</span> ← <strong>Prezensa</strong> · <code>lista.prezensa</code></div>
+      <div class="plain"><strong>One sheet has many day rows</strong> — up to one per working day of that month.</div>
+    </div>
+
+    <div class="sub">Constraints &amp; behaviour</div>
+    <ul class="notes">
+      <li><strong>Unique</strong> <code>(profesor, fulan, tinan)</code> — a teacher cannot have two sheets for the same month.</li>
+      <li>Why <code>kargu</code> is duplicated: a promotion must not rewrite the title printed on last month’s signed sheet. Every other teacher attribute is read through <code>profesor</code> and never copied.</li>
+      <li>Ordering: newest month first, then teacher name.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="panel card">
+  <div class="head">
+    <h3>Prezensa <code>attendance_prezensa</code></h3>
+    <p class="summary">
+      One row of the grid — one teacher, one day. It deliberately stores <em>no times</em>:
+      the four columns of the paper book are rebuilt from the <code>Marka</code> punches,
+      because a punch now carries evidence that must stay attached to it.
+    </p>
+  </div>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:24%">Field</th><th style="width:26%">Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="name">id</td><td class="type">BigAutoField</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+        <tr><td class="name">lista_id</td><td class="type">FK → ListaPrezensa</td><td class="note"><span class="badge b-fk">FK</span> see below.</td></tr>
+        <tr><td class="name">data</td><td class="type">DateField</td><td class="note">The calendar day (DATA column).</td></tr>
+        <tr><td class="name">estadu</td><td class="type">CharField(10), choices</td><td class="note">PREZENTE · FALTA · LISENSA · MISAUN · FERIADU. Set to PREZENTE by any punch.</td></tr>
+        <tr><td class="name">obs</td><td class="type">TextField</td><td class="note">The OBS column of the sheet.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Derived, not stored — this is the printed grid</div>
+    <table>
+      <tbody>
+        <tr><td class="name">loron</td><td class="type">property → str</td><td class="note"><span class="badge b-derived">derived</span> weekday in Tetun, from <code>data</code>. Never stored, so it cannot disagree with the date.</td></tr>
+        <tr><td class="name">sabadu</td><td class="type">property → bool</td><td class="note"><span class="badge b-derived">derived</span> Saturday — no afternoon session exists.</td></tr>
+        <tr><td class="name">oras_dader_tama</td><td class="type">property → time</td><td class="note"><span class="badge b-derived">derived</span> morning arrival, scheduled 08:00.</td></tr>
+        <tr><td class="name">oras_dader_fila</td><td class="type">property → time</td><td class="note"><span class="badge b-derived">derived</span> morning departure, scheduled 12:00.</td></tr>
+        <tr><td class="name">oras_lorokraik_tama</td><td class="type">property → time</td><td class="note"><span class="badge b-derived">derived</span> afternoon arrival, scheduled 13:30.</td></tr>
+        <tr><td class="name">oras_lorokraik_fila</td><td class="type">property → time</td><td class="note"><span class="badge b-derived">derived</span> afternoon departure, scheduled 17:30.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Relationships</div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">FK</span> lista → <strong>ListaPrezensa</strong> · related_name <code>prezensa</code> · on_delete CASCADE</div>
+      <div class="plain"><strong>One monthly sheet has many days; each day belongs to one sheet</strong> — and through it, to one teacher.</div>
+    </div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">reverse FK</span> ← <strong>Marka</strong> · <code>prezensa.marka</code></div>
+      <div class="plain"><strong>One day has up to four punches</strong> — morning in/out and afternoon in/out.</div>
+    </div>
+
+    <div class="sub">Constraints &amp; behaviour</div>
+    <ul class="notes">
+      <li><strong>Unique</strong> <code>(lista, data)</code> — one row per teacher per day.</li>
+      <li><code>Prezensa.objects.ba_loron(profesor, data)</code> is the only way rows are created: it opens the monthly sheet and the day row together.</li>
+      <li>Business rules live here, in <code>clock_in()</code> / <code>clock_out()</code>: no duplicate punch per session, no clock-out before clock-in, no Saturday afternoon, and the teacher must be inside the school’s 100 m radius.</li>
+      <li>Session cut-off is 13:00 — a punch before it belongs to DADER, at or after to LOROKRAIK.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="panel card">
+  <div class="head">
+    <h3>Marka <code>attendance_marka</code></h3>
+    <p class="summary">
+      One punch: the moment a teacher pressed Clock In or Clock Out, with the evidence
+      captured at that moment. This table <em>is</em> the replacement for the handwritten
+      signature — the time comes from the server and the coordinates from the device, so
+      nothing here is the teacher’s to edit.
+    </p>
+  </div>
+  <div class="body">
+    <table>
+      <thead><tr><th style="width:24%">Field</th><th style="width:26%">Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td class="name">id</td><td class="type">BigAutoField</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+        <tr><td class="name">prezensa_id</td><td class="type">FK → Prezensa</td><td class="note"><span class="badge b-fk">FK</span> see below.</td></tr>
+        <tr><td class="name">sesaun</td><td class="type">CharField(10), choices</td><td class="note">DADER (morning) or LOROKRAIK (afternoon).</td></tr>
+        <tr><td class="name">tipu</td><td class="type">CharField(4), choices</td><td class="note">TAMA (in) or FILA (out).</td></tr>
+        <tr><td class="name">oras</td><td class="type">TimeField</td><td class="note">Stamped by the server, never sent by the client.</td></tr>
+        <tr><td class="name">rejistu_iha</td><td class="type">DateTimeField</td><td class="note"><code>auto_now_add</code> — audit timestamp, distinct from <code>oras</code>.</td></tr>
+        <tr><td class="name">foto</td><td class="type">ImageField</td><td class="note"><strong>Required.</strong> The selfie taken at the punch, <code>upload_to='prezensa/%Y/%m/'</code>.</td></tr>
+        <tr><td class="name">latitude</td><td class="type">DecimalField(9,6)</td><td class="note">Range-validated ±90. Six decimals ≈ 11 cm.</td></tr>
+        <tr><td class="name">longitude</td><td class="type">DecimalField(9,6)</td><td class="note">Range-validated ±180.</td></tr>
+        <tr><td class="name">presizaun</td><td class="type">FloatField, null</td><td class="note">Accuracy radius the device reported, in metres. Recorded but never trusted for the geofence — the client controls it.</td></tr>
+        <tr><td class="name">distansia_metru</td><td class="type">FloatField, null</td><td class="note">Distance from the school, computed in <code>save()</code> and stored so a month review is not 60 haversines.</td></tr>
+        <tr><td class="name">iha_eskola</td><td class="type">BooleanField, null</td><td class="note">Inside the radius. <code>null</code> when no school coordinates are configured.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Derived, not stored</div>
+    <table>
+      <tbody>
+        <tr><td class="name">kolumna</td><td class="type">property → str</td><td class="note"><span class="badge b-derived">derived</span> which book column this fills: <code>ORAS_DADER_TAMA</code>, <code>ORAS_DADER_FILA</code>, <code>ORAS_LOROKRAIK_TAMA</code>, <code>ORAS_LOROKRAIK_FILA</code>.</td></tr>
+        <tr><td class="name">oras_orariu</td><td class="type">property → time</td><td class="note"><span class="badge b-derived">derived</span> the scheduled time printed in that column’s header.</td></tr>
+        <tr><td class="name">atrazadu</td><td class="type">property → bool|None</td><td class="note"><span class="badge b-derived">derived</span> arrival later than scheduled. <code>None</code> for departures, where lateness is meaningless.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub">Relationships</div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">FK</span> prezensa → <strong>Prezensa</strong> · related_name <code>marka</code> · on_delete CASCADE</div>
+      <div class="plain"><strong>One day has many punches; each punch belongs to exactly one day.</strong> The chain up to a person is <code>Marka → Prezensa → ListaPrezensa → User</code>.</div>
+    </div>
+
+    <div class="sub">Constraints &amp; behaviour</div>
+    <ul class="notes">
+      <li><strong>Unique</strong> <code>(prezensa, sesaun, tipu)</code> — the database itself prevents a second morning clock-in, not just the Python check.</li>
+      <li><code>save()</code> recomputes <code>distansia_metru</code> and <code>iha_eskola</code> from the coordinates every time.</li>
+      <li>Distance uses a haversine formula in <code>attendance/geo.py</code> — no Maps API, no PostGIS.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ────────────────────────────── third party ────────────────────────────── -->
+<h2 class="app">third-party tables</h2>
+
+<div class="panel card">
+  <div class="head">
+    <h3>OutstandingToken &amp; BlacklistedToken <code>rest_framework_simplejwt.token_blacklist</code></h3>
+    <p class="summary">
+      Not written by this project, but part of its schema. Refresh-token rotation is on,
+      so every refresh records the issued token and blacklists the one it replaced — this
+      is what makes logout able to revoke a session.
+    </p>
+  </div>
+  <div class="body">
+    <div class="rel">
+      <div class="line1"><span class="badge b-fk">FK</span> OutstandingToken.user → <strong>accounts.User</strong> · on_delete CASCADE</div>
+      <div class="plain"><strong>One user has many issued refresh tokens</strong> — one per login and per rotation.</div>
+    </div>
+    <div class="rel">
+      <div class="line1"><span class="badge b-o2o">1:1</span> BlacklistedToken.token → <strong>OutstandingToken</strong></div>
+      <div class="plain"><strong>An issued token is revoked at most once.</strong> Presence of the row means the refresh token no longer works.</div>
+    </div>
+    <ul class="notes">
+      <li>Grows by roughly one row per refresh (~200/day for 57 teachers). Run <code>manage.py flushexpiredtokens</code> weekly.</li>
+      <li>Django’s own tables (<code>auth_group</code>, <code>auth_permission</code>, <code>django_admin_log</code>, <code>django_session</code>, <code>django_migrations</code>) are present and unmodified.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>
+  Generated from <code>accounts/models.py</code> and <code>attendance/models.py</code>.
+  Field names are Tetun: <em>prezensa</em> attendance · <em>marka</em> punch ·
+  <em>naran</em> name · <em>kargu</em> position · <em>foto</em> photo ·
+  <em>oras</em> time · <em>loron</em> day · <em>fulan</em> month · <em>tinan</em> year ·
+  <em>dader</em> morning · <em>lorokraik</em> afternoon · <em>tama</em> in · <em>fila</em> out.
+</footer>
+
+</div>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  const escuru = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: escuru ? 'dark' : 'default',
+    er: { useMaxWidth: true, entityPadding: 14 },
+    themeVariables: { fontSize: '13px' }
+  });
+</script>
+</body>
+</html>
