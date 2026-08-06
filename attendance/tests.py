@@ -72,7 +72,7 @@ class PrezensaTests(TestCase):
         self.assertEqual(prezensa.oras_lorokraik_tama, time(13, 35))
         self.assertEqual(prezensa.oras_lorokraik_fila, time(17, 32))
         self.assertEqual(prezensa.marka.count(), 4)
-        self.assertEqual(prezensa.estadu, Prezensa.Estadu.PREZENTE)
+        self.assertEqual(prezensa.status, Prezensa.Status.PRESENT)
 
     def test_punch_keeps_photo_and_location_as_evidence(self):
         marka = self.prezensa().clock_in(oras=time(8, 0), **evidensia(presizaun=12.5))
@@ -188,7 +188,7 @@ class IstoriaTests(APITestCase):
         # A day nobody marked still appears, empty.
         mamuk = next(l for l in body['loron'] if l['data'] == '2026-02-19')
         self.assertEqual(mamuk['marka'], [])
-        self.assertIsNone(mamuk['estadu'])
+        self.assertIsNone(mamuk['status'])
         self.assertEqual(mamuk['loron'], 'Quinta-feira')
 
     def test_summary_counts_the_month(self):
@@ -626,8 +626,8 @@ class HotuTests(APITestCase):
 
 
 @MEDIA_TEMP
-class EstaduTests(APITestCase):
-    """Hand-written estadu over a range: /api/prezensa/estadu/ (plan R5, R6)."""
+class StatusTests(APITestCase):
+    """Hand-written status over a range: /api/prezensa/status/ (plan R5, R6)."""
 
     def setUp(self):
         self.diretor = User.objects.create_superuser(
@@ -643,15 +643,15 @@ class EstaduTests(APITestCase):
     def rejistu(self, **override):
         payload = {
             'profesor': self.profesor.pk,
-            'estadu': 'LISENSA',
+            'status': 'LEAVE',
             'husi': '2026-02-05',
             'too': '2026-02-09',
             'obs': 'Moras -- atestadu médiku',
             **override,
         }
-        return self.client.post('/api/prezensa/estadu/', payload, format='json')
+        return self.client.post('/api/prezensa/status/', payload, format='json')
 
-    def test_range_writes_estadu_and_obs_skipping_sunday(self):
+    def test_range_writes_status_and_obs_skipping_sunday(self):
         response = self.rejistu()
         self.assertEqual(response.status_code, 201, response.content)
 
@@ -661,7 +661,7 @@ class EstaduTests(APITestCase):
         self.assertNotIn('2026-02-08', body['loron'])
 
         dias = Prezensa.objects.filter(
-            lista__profesor=self.profesor, estadu='LISENSA'
+            lista__profesor=self.profesor, status='LEAVE'
         )
         self.assertEqual(dias.count(), 4)
         self.assertTrue(all(d.obs == 'Moras -- atestadu médiku' for d in dias))
@@ -671,10 +671,10 @@ class EstaduTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['code'], 'invalid_period')
 
-    def test_prezente_cannot_be_hand_written(self):
-        response = self.rejistu(estadu='PREZENTE')
+    def test_present_cannot_be_hand_written(self):
+        response = self.rejistu(status='PRESENT')
         self.assertEqual(response.status_code, 400)
-        self.assertIn('estadu', response.json())
+        self.assertIn('status', response.json())
 
     def test_unknown_profesor_is_rejected(self):
         response = self.rejistu(profesor=9999)
@@ -695,7 +695,7 @@ class EstaduTests(APITestCase):
         # Atomic: no day in the range was written, not even conflict-free ones.
         self.assertFalse(
             Prezensa.objects.filter(
-                lista__profesor=self.profesor, estadu='LISENSA'
+                lista__profesor=self.profesor, status='LEAVE'
             ).exists()
         )
 
@@ -703,7 +703,7 @@ class EstaduTests(APITestCase):
         self.rejistu(husi='2026-02-05', too='2026-02-05')
 
         response = self.client.delete(
-            '/api/prezensa/estadu/',
+            '/api/prezensa/status/',
             {'profesor': self.profesor.pk, 'data': '2026-02-05'},
             format='json',
         )
@@ -719,7 +719,7 @@ class EstaduTests(APITestCase):
             oras=time(8, 0), **evidensia()
         )
         response = self.client.delete(
-            '/api/prezensa/estadu/',
+            '/api/prezensa/status/',
             {'profesor': self.profesor.pk, 'data': '2026-02-06'},
             format='json',
         )
@@ -728,13 +728,13 @@ class EstaduTests(APITestCase):
 
     def test_delete_of_a_missing_day_is_404(self):
         response = self.client.delete(
-            '/api/prezensa/estadu/',
+            '/api/prezensa/status/',
             {'profesor': self.profesor.pk, 'data': '2026-02-05'},
             format='json',
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_an_ordinary_teacher_cannot_write_estadu(self):
+    def test_an_ordinary_teacher_cannot_write_status(self):
         self.client.force_authenticate(self.profesor)
         self.assertEqual(self.rejistu().status_code, 403)
 
