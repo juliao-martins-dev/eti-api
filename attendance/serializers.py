@@ -68,7 +68,7 @@ class PrezensaSerializer(serializers.ModelSerializer):
 
     loron = serializers.CharField(read_only=True)
     profesor = serializers.CharField(source='lista.profesor', read_only=True)
-    estadu_display = serializers.CharField(source='get_estadu_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
 
     oras_dader_tama = serializers.TimeField(read_only=True)
     oras_dader_fila = serializers.TimeField(read_only=True)
@@ -88,8 +88,8 @@ class PrezensaSerializer(serializers.ModelSerializer):
             'oras_dader_fila',
             'oras_lorokraik_tama',
             'oras_lorokraik_fila',
-            'estadu',
-            'estadu_display',
+            'status',
+            'status_display',
             'obs',
             'marka',
         ]
@@ -202,26 +202,26 @@ class PrezensaProfesorLoronLigeruSerializer(PrezensaProfesorLoronSerializer):
     prezensa = PrezensaLigeruSerializer(read_only=True, allow_null=True)
 
 
-#: Everything an administrator may hand-write onto a day. PREZENTE is absent
+#: Everything an administrator may hand-write onto a day. PRESENT is absent
 #: on purpose: it can only come from a punch.
-ESTADU_HAKEREK = [
-    choice for choice in Prezensa.Estadu.choices
-    if choice[0] != Prezensa.Estadu.PREZENTE
+MANUAL_STATUS = [
+    choice for choice in Prezensa.Status.choices
+    if choice[0] != Prezensa.Status.PRESENT
 ]
 
 
-class EstaduRejistuSerializer(serializers.Serializer):
-    """POST /api/prezensa/estadu/ -- a leave/mission/holiday over a range (R5)."""
+class StatusRejistuSerializer(serializers.Serializer):
+    """POST /api/prezensa/status/ -- a leave/mission/holiday over a range (R5)."""
 
     profesor = serializers.IntegerField()
-    estadu = serializers.ChoiceField(choices=ESTADU_HAKEREK)
+    status = serializers.ChoiceField(choices=MANUAL_STATUS)
     husi = serializers.DateField()
     too = serializers.DateField()
     obs = serializers.CharField(required=False, allow_blank=True, default='')
 
 
-class EstaduHasaiSerializer(serializers.Serializer):
-    """DELETE /api/prezensa/estadu/ -- return a hand-written day to "no record"."""
+class StatusHasaiSerializer(serializers.Serializer):
+    """DELETE /api/prezensa/status/ -- return a hand-written day to "no record"."""
 
     profesor = serializers.IntegerField()
     data = serializers.DateField()
