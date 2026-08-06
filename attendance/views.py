@@ -24,8 +24,6 @@ from .models import (
     semana_husi,
 )
 from .serializers import (
-    EstaduHasaiSerializer,
-    EstaduRejistuSerializer,
     ListaPrezensaSerializer,
     MarkaPrezensaSerializer,
     MarkaSerializer,
@@ -34,6 +32,8 @@ from .serializers import (
     PrezensaProfesorLoronSerializer,
     PrezensaProfesorSerializer,
     PrezensaSerializer,
+    StatusHasaiSerializer,
+    StatusRejistuSerializer,
 )
 
 
@@ -199,8 +199,8 @@ class PrezensaViewSet(mixins.ListModelMixin,
                 'oras_dader_fila': None,
                 'oras_lorokraik_tama': None,
                 'oras_lorokraik_fila': None,
-                'estadu': None,
-                'estadu_display': None,
+                'status': None,
+                'status_display': None,
                 'obs': '',
                 'marka': [],
             }
@@ -345,23 +345,23 @@ class PrezensaViewSet(mixins.ListModelMixin,
     @action(
         detail=False,
         methods=['post', 'delete'],
-        url_path='estadu',
+        url_path='status',
         permission_classes=[IsAuthenticated, EhAdmin],
         parser_classes=[JSONParser, MultiPartParser, FormParser],
     )
-    def estadu(self, request):
+    def status(self, request):
         if request.method == 'POST':
-            return self._estadu_rejistu(request)
-        return self._estadu_hasai(request)
+            return self._status_rejistu(request)
+        return self._status_hasai(request)
 
-    def _estadu_rejistu(self, request):
+    def _status_rejistu(self, request):
         """
-        Hand-write LISENSA / MISAUN / FERIADU / FALTA plus OBS over a date
+        Hand-write LEAVE / MISSION / HOLIDAY / ABSENT plus OBS over a date
         range (plan R5). Sundays are skipped. A day that already holds punches
         blocks the WHOLE request with `iha_marka` -- Marka rows are evidence
         and must never be silently buried under a leave.
         """
-        payload = EstaduRejistuSerializer(data=request.data)
+        payload = StatusRejistuSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         dados = payload.validated_data
 
@@ -399,7 +399,7 @@ class PrezensaViewSet(mixins.ListModelMixin,
             if konflitu:
                 return Response(
                     {
-                        'detail': "Loron balun iha marka ona; la bele taka ho estadu.",
+                        'detail': "Loron balun iha marka ona; la bele taka ho status.",
                         'code': 'iha_marka',
                         'loron': [dia.isoformat() for dia in konflitu],
                     },
@@ -408,15 +408,15 @@ class PrezensaViewSet(mixins.ListModelMixin,
 
             for dia in dias:
                 prezensa = Prezensa.objects.ba_loron(profesor, dia)
-                prezensa.estadu = dados['estadu']
+                prezensa.status = dados['status']
                 prezensa.obs = dados['obs']
-                prezensa.save(update_fields=['estadu', 'obs'])
+                prezensa.save(update_fields=['status', 'obs'])
 
         return Response(
             {
-                'detail': 'Estadu rejistu ho susesu.',
+                'detail': 'Status rejistu ho susesu.',
                 'profesor': profesor.pk,
-                'estadu': dados['estadu'],
+                'status': dados['status'],
                 'husi': husi,
                 'too': too,
                 'loron': [dia.isoformat() for dia in dias],
@@ -425,13 +425,13 @@ class PrezensaViewSet(mixins.ListModelMixin,
             status=status.HTTP_201_CREATED,
         )
 
-    def _estadu_hasai(self, request):
+    def _status_hasai(self, request):
         """
         Remove a hand-written day so it returns to "no record" (plan R6).
-        Only valid when the day holds no punches and its estadu is not
-        PREZENTE -- punches are evidence and cannot be deleted from here.
+        Only valid when the day holds no punches and its status is not
+        PRESENT -- punches are evidence and cannot be deleted from here.
         """
-        payload = EstaduHasaiSerializer(data=request.data)
+        payload = StatusHasaiSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
 
         prezensa = (
@@ -449,10 +449,10 @@ class PrezensaViewSet(mixins.ListModelMixin,
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        if prezensa.marka.all() or prezensa.estadu == Prezensa.Estadu.PREZENTE:
+        if prezensa.marka.all() or prezensa.status == Prezensa.Status.PRESENT:
             return Response(
                 {
-                    'detail': "Loron ne'e iha marka ka estadu PREZENTE; la bele hasai.",
+                    'detail': "Loron ne'e iha marka ka status PRESENT; la bele hasai.",
                     'code': 'iha_marka',
                 },
                 status=status.HTTP_400_BAD_REQUEST,
