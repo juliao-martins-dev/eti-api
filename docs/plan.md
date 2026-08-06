@@ -236,7 +236,7 @@ erDiagram
         bigint id PK
         bigint lista_id FK
         date data
-        string estadu
+        string status
         text obs
     }
     Marka {
@@ -288,8 +288,9 @@ One printed sheet = one teacher for one month; holds the form's header block.
 
 One row of the grid: one teacher, one day. **Stores no times.**
 
-- Key fields: `lista` (FK), `data` (Date), `estadu`
-  (PREZENTE/FALTA/LISENSA/MISAUN/FERIADU), `obs` (Text).
+- Key fields: `lista` (FK), `data` (Date), `status`
+  (PRESENT/ABSENT/LEAVE/MISSION/HOLIDAY -- English values, Tetun display
+  labels via `status_display`), `obs` (Text).
 - Unique `(lista, data)`.
 - Relations: **belongs to one sheet**; **has up to four punches**
   (`prezensa.marka`).
@@ -350,14 +351,14 @@ All paths **require the trailing slash**.
 | PATCH | `/api/auth/me/` | Replace profile photo | Yes | multipart `foto` (required) → full profile. Other fields ignored. `PUT` → 405 |
 | GET | `/api/prezensa/` | List own day rows | Yes | → `PrezensaSerializer[]` scoped to `request.user` |
 | GET | `/api/prezensa/{id}/` | One day row | Yes | → `PrezensaSerializer` |
-| GET | `/api/prezensa/ohin/` | Today + button state (creates row) | Yes | → day + `sesaun`, `oras_tama`, `oras_fila`, `bele_clock_in`, `bele_clock_out`, `marka[]` |
+| GET | `/api/prezensa/ohin/` | Today + button state (creates row) | Yes | → day (`status`, `status_display`, …) + `sesaun`, `oras_tama`, `oras_fila`, `bele_clock_in`, `bele_clock_out`, `marka[]` |
 | GET | `/api/prezensa/istoria/` | One month (or week) of a sheet, paper-layout | Yes | `?fulan&tinan&semana` → `{profesor, kargu, fulan, fulan_display, tinan, semana, rezumu{...}, loron[]}`; `?profesor=<id>` (admin only) opens another teacher's sheet; 400 `invalid_period` |
 | GET | `/api/prezensa/ohin-hotu/` | Today for **all** teachers | Yes + **EhAdmin** | → `{data, loron, rezumu{total, marka_ona, seidauk_marka}, profesor[]}`; 403 otherwise |
 | POST | `/api/prezensa/checkin/` | Arrival punch | Yes | multipart `foto`,`latitude`,`longitude`,`presizaun?`,`sesaun?` → 201 day + `marka_foun` |
 | POST | `/api/prezensa/checkout/` | Departure punch | Yes | same → 201 |
 | GET | `/api/prezensa/hotu/` | Any teacher over a period (dashboard grid) | Yes + **EhAdmin** | `?data=YYYY-MM-DD` or `?fulan&tinan&semana?` + `?profesor?` + `?marka=false?` → one line per teacher per working day, empty days included |
-| POST | `/api/prezensa/estadu/` | Hand-write LISENSA/MISAUN/FERIADU/FALTA over a range | Yes + **EhAdmin** | `{profesor, estadu, husi, too, obs?}` → 201 with the days written; Sundays skipped; punched days block all with 400 `iha_marka` |
-| DELETE | `/api/prezensa/estadu/` | Return a hand-written day to "no record" | Yes + **EhAdmin** | `{profesor, data}` → 204; 400 `iha_marka` if punched or PREZENTE |
+| POST | `/api/prezensa/status/` | Hand-write LEAVE/MISSION/HOLIDAY/ABSENT over a range | Yes + **EhAdmin** | `{profesor, status, husi, too, obs?}` → 201 with the days written; Sundays skipped; punched days block all with 400 `iha_marka` |
+| DELETE | `/api/prezensa/status/` | Return a hand-written day to "no record" | Yes + **EhAdmin** | `{profesor, data}` → 204; 400 `iha_marka` if punched or PRESENT |
 | GET | `/api/profesor/` | Teacher roster incl. deactivated | Yes + **EhAdmin** | → roster rows (`sexu`, `nu_kontaktu`, `is_active` on top of the profile) |
 | POST | `/api/profesor/` | Create teacher account | Yes + **EhAdmin** | → 201 roster row + `password_inisial` (shown once); 400 `duplicate_numeru` / `duplicate_email` |
 | PATCH | `/api/profesor/{id}/` | Update / soft-(de)activate | Yes + **EhAdmin** | any subset + `is_active` → roster row; DELETE/PUT → 405 |
@@ -443,7 +444,7 @@ Config: `eti-api/core/settings.py` (`SIMPLE_JWT`, `REST_FRAMEWORK`).
 | Domain names in **Tetun**, on models, fields, serializers, actions | `Prezensa`, `Marka`, `naran_kompletu`, `oras_dader_tama`, `ba_loron()` |
 | Framework/infra names in English | `LoginView`, `get_queryset`, `related_name` |
 | Model verbose names wrapped in `gettext_lazy as _` | all fields in both apps |
-| Choices as nested `TextChoices`/`IntegerChoices` | `User.Role`, `Prezensa.Estadu`, `Fulan` |
+| Choices as nested `TextChoices`/`IntegerChoices` | `User.Role`, `Prezensa.Status`, `Fulan` |
 | DB constraints named explicitly | `unique_marka_prezensa_sesaun_tipu` |
 | URL segments kebab-case, resource-first | `/api/prezensa/ohin-hotu/` |
 | React components PascalCase, `lib/` modules lowercase | `IstoriaDayCard.tsx`, `lib/istoria.ts` |
@@ -567,8 +568,9 @@ reading the code.
 | 13 | Logout cannot revoke an already-issued access token (≤15 min window) — inherent to stateless JWT, not a defect. |
 | 14 | ~~Admins missing from reports~~ **Resolved:** `ohin-hotu`, `hotu` and `istoria?profesor=` cover `role in (PROFESSOR, ADMIN)` via `profesores_relatoriu()` (`attendance/views.py`) — the director keeps a sheet like everyone else. |
 | 15 | Django's `TIME_ZONE` is `Asia/Dili`; the home screen mock in the original design showed "WIB" (UTC+7). **UNVERIFIED** whether any client formats times in a non-Dili zone. |
-| 16 | ~~`estadu` values never set~~ **Resolved:** `POST /api/prezensa/estadu/` (admin) writes FALTA/LISENSA/MISAUN/FERIADU over a range. |
+| 16 | ~~`estadu` values never set~~ **Resolved:** `POST /api/prezensa/status/` (admin) writes ABSENT/LEAVE/MISSION/HOLIDAY over a range. |
 | 17 | ~~`obs` never written~~ **Resolved:** written by the same endpoint. |
+| 20 | **2026-08-06 rename:** `Prezensa.estadu` → `status`, values PREZENTE/FALTA/LISENSA/MISAUN/FERIADU → PRESENT/ABSENT/LEAVE/MISSION/HOLIDAY, endpoint `/api/prezensa/estadu/` → `/api/prezensa/status/`; migration `attendance/0003` maps existing rows. **Both clients must rename** the field, the payload key and the URL; `status_display` keeps the Tetun label. |
 
 ### Environment
 
@@ -585,7 +587,7 @@ reading the code.
 `profesor` teacher · `naran kompletu` full name · `kargu` position ·
 `foto` photo · `oras` time · `loron` day/weekday · `fulan` month ·
 `tinan` year · `semana` week · `dader` morning · `lorokraik` afternoon ·
-`tama` in/enter · `fila` out/return · `atrazadu` late · `estadu` status ·
+`tama` in/enter · `fila` out/return · `atrazadu` late ·
 `iha eskola` at school · `dook` far · `rezumu` summary · `seidauk` not yet ·
 `eskola` school · `raiu` radius · `distansia` distance · `presizaun` accuracy ·
 `sesaun` session · `tipu` type · `numeru` number · `sexu` sex ·
