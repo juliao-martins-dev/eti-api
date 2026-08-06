@@ -107,7 +107,7 @@ Feeds all three Painel sections in one call.
         "id": 91, "data": "2026-08-05", "loron": "Quarta-feira",
         "oras_dader_tama": "08:03:00", "oras_dader_fila": null,
         "oras_lorokraik_tama": null, "oras_lorokraik_fila": null,
-        "estadu": "PREZENTE", "estadu_display": "Prezente", "obs": "",
+        "status": "PRESENT", "status_display": "Prezente", "obs": "",
         "marka": [ { "kolumna": "ORAS_DADER_TAMA", "oras": "08:03:00",
                      "oras_orariu": "08:00:00", "atrazadu": true,
                      "foto": "http://host/media/prezensa/2026/08/x.jpg",
@@ -147,7 +147,7 @@ Query parameters:
   "profesor": [
     { "profesor": { "id": 3, "...": "..." },
       "data": "2026-07-13",
-      "prezensa": { "id": 91, "estadu": "LISENSA",
+      "prezensa": { "id": 91, "status": "LEAVE", "status_display": "Lisensa",
                      "obs": "Moras — atestadu médiku", "marka": [], "...": "..." },
       "marka_ona": false },
     { "profesor": { "...": "..." }, "data": "2026-07-14",
@@ -180,28 +180,34 @@ GET /api/prezensa/istoria/?fulan=7&tinan=2026&profesor=6
 Response: `{profesor, kargu, fulan, fulan_display, tinan, semana,
 rezumu{loron_servisu, marka_ona, seidauk_marka, marka_total, atrazadu},
 loron[]}` — each `loron[]` row carries `data`, `loron` (weekday), `semana`,
-`sabadu`, the four `oras_*` columns, `estadu`, `obs` and nested `marka`.
+`sabadu`, the four `oras_*` columns, `status`, `status_display`, `obs` and
+nested `marka`.
 Without the param it returns the caller's own sheet; a non-admin passing it
 gets `403`; unknown id → `400 {code: "invalid_profesor"}`.
 
-## 5. Hand-written days — `/api/prezensa/estadu/` (admin)
+## 5. Hand-written days — `/api/prezensa/status/` (admin)
 
-### `POST` — register LISENSA / MISAUN / FERIADU / FALTA over a range
+> **Renamed 2026-08-06** — was `/api/prezensa/estadu/` with field `estadu`
+> and Tetun values. The field is now `status` with **English stored values**
+> (`PRESENT`, `ABSENT`, `LEAVE`, `MISSION`, `HOLIDAY`); the Tetun label lives
+> in `status_display`. Update the URL, the payload key and every value string.
+
+### `POST` — register LEAVE / MISSION / HOLIDAY / ABSENT over a range
 
 ```json
-{ "profesor": 3, "estadu": "LISENSA",
+{ "profesor": 3, "status": "LEAVE",
   "husi": "2026-08-05", "too": "2026-08-07",
   "obs": "Moras — atestadu médiku" }
 ```
 
 Server behaviour (do **not** re-implement client-side): skips Sundays,
-creates the monthly sheet/day rows if absent, overwrites `estadu`/`obs` of
-the days in range. `PREZENTE` is not accepted — it can only come from a punch.
+creates the monthly sheet/day rows if absent, overwrites `status`/`obs` of
+the days in range. `PRESENT` is not accepted — it can only come from a punch.
 
 **201**:
 
 ```json
-{ "detail": "Estadu rejistu ho susesu.", "profesor": 3, "estadu": "LISENSA",
+{ "detail": "Status rejistu ho susesu.", "profesor": 3, "status": "LEAVE",
   "husi": "2026-08-05", "too": "2026-08-07",
   "loron": ["2026-08-05", "2026-08-06", "2026-08-07"], "total": 3 }
 ```
@@ -219,8 +225,8 @@ Errors:
 Body: `{"profesor": 3, "data": "2026-08-05"}` → **204**, the day row is gone.
 
 - `404` — no row for that teacher/day.
-- `400 {code: "iha_marka"}` — the day holds punches, or its estadu is
-  PREZENTE. Only hand-written days can be removed.
+- `400 {code: "iha_marka"}` — the day holds punches, or its status is
+  PRESENT. Only hand-written days can be removed.
 
 ## 6. System info — `GET /api/konfig/` (any authenticated user)
 
@@ -251,9 +257,9 @@ Errors are `400/403/404` with `{detail, code?, ...extra}`:
 | code | Where | Dashboard reaction |
 | --- | --- | --- |
 | `duplicate_numeru` / `duplicate_email` | roster POST/PATCH | field toast |
-| `invalid_period` | `hotu`, `estadu` POST | fix pickers |
-| `invalid_profesor` | `hotu`, `estadu` POST | shouldn't happen from UI |
-| `iha_marka` | `estadu` POST/DELETE | show conflicting `loron`, offer to view the day |
+| `invalid_period` | `hotu`, `status` POST | fix pickers |
+| `invalid_profesor` | `hotu`, `status` POST | shouldn't happen from UI |
+| `iha_marka` | `status` POST/DELETE | show conflicting `loron`, offer to view the day |
 | `token_not_valid` | refresh/logout | refresh → re-login |
 | — (`403`) | any admin route | account lacks `EhAdmin`; send to login or hide UI |
 
