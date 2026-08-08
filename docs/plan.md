@@ -359,9 +359,11 @@ All paths **require the trailing slash**.
 | GET | `/api/prezensa/hotu/` | Any teacher over a period (dashboard grid) | Yes + **EhAdmin** | `?data=YYYY-MM-DD` or `?fulan&tinan&semana?` + `?profesor?` + `?marka=false?` → one line per teacher per working day, empty days included |
 | POST | `/api/prezensa/status/` | Hand-write LEAVE/MISSION/HOLIDAY/ABSENT over a range | Yes + **EhAdmin** | `{profesor, status, husi, too, obs?}` → 201 with the days written; Sundays skipped; punched days block all with 400 `iha_marka` |
 | DELETE | `/api/prezensa/status/` | Return a hand-written day to "no record" | Yes + **EhAdmin** | `{profesor, data}` → 204; 400 `iha_marka` if punched or PRESENT |
-| GET | `/api/profesor/` | Teacher roster incl. deactivated | Yes + **EhAdmin** | → roster rows (`sexu`, `nu_kontaktu`, `is_active` on top of the profile) |
+| GET | `/api/profesor/` | Roster: **PROFESSOR + ADMIN**, incl. deactivated | Yes + **EhAdmin** | → roster rows (`role`, `role_display`, `sexu`, `nu_kontaktu`, `is_active` on top of the profile) |
 | POST | `/api/profesor/` | Create teacher account | Yes + **EhAdmin** | → 201 roster row + `password_inisial` (shown once); 400 `duplicate_numeru` / `duplicate_email` |
-| PATCH | `/api/profesor/{id}/` | Update / soft-(de)activate | Yes + **EhAdmin** | any subset + `is_active` → roster row; DELETE/PUT → 405 |
+| PATCH | `/api/profesor/{id}/` | Update / soft-(de)activate | Yes + **EhAdmin** | any subset + `is_active` → roster row; `PUT` → 405 |
+| DELETE | `/api/profesor/{id}/` | **Irreversible** delete: teacher + all sheets/days/punches + photo files | Yes + **EhAdmin** | `{password}` (the caller's own) → 204; 400 `password_presiza`, 403 `password_sala` / `rasik` / `eh_admin` |
+| POST | `/api/profesor/{id}/reset-password/` | Admin sets a new password for a teacher who lost theirs; revokes their open sessions | Yes + **EhAdmin** | `{password_foun, password_konfirma}` (must match) → 200 `{detail, sesaun_taka, profesor}`; 400 `password_presiza` / `password_la_hanesan` / `password_fraku`, 403 `eh_admin` / `rasik` |
 | GET | `/api/konfig/` | Scheduled times + geofence settings | Yes | → `oras_*`, `limite_sesaun`, `eskola_raiu_metru`, `eskola_obriga_fatin`; **no coordinates** |
 | GET | `/api/lista-prezensa/` | Own monthly sheets | Yes | → `ListaPrezensaSerializer[]` with nested days |
 | GET | `/api/lista-prezensa/{id}/` | One monthly sheet | Yes | → sheet + `prezensa[]` |
@@ -379,6 +381,16 @@ All paths **require the trailing slash**.
 | `dook_husi_eskola` | Beyond the geofence radius | `distansia` (m) |
 | `invalid_period` | Bad `fulan`/`tinan`/`semana` | — |
 | `token_not_valid` | Expired/blacklisted token | — |
+
+### Roster error codes
+
+| code | Meaning |
+| --- | --- |
+| `duplicate_numeru` / `duplicate_email` | The column is taken |
+| `password_presiza` / `password_sala` | DELETE: the caller's password is missing or wrong |
+| `password_la_hanesan` / `password_fraku` | reset-password: the two fields differ, or Django's validators refused it (`erros[]`) |
+| `rasik` | The target is the caller |
+| `eh_admin` | The target is an ADMIN — not deletable or resettable from the roster |
 
 ---
 
@@ -417,7 +429,8 @@ Config: `eti-api/core/settings.py` (`SIMPLE_JWT`, `REST_FRAMEWORK`).
 | --- | --- |
 | `/api/auth/login|refresh|verify/` | Public |
 | Everything else under `/api/` | `IsAuthenticated` (global default) |
-| `/api/prezensa/ohin-hotu/` | `IsAuthenticated` + `EhAdmin` (`accounts/permissions.py`: `is_staff` **or** `role == ADMIN`) |
+| `/api/prezensa/ohin-hotu/`, `hotu/`, `status/`, all of `/api/profesor/` | `IsAuthenticated` + `EhAdmin` (`accounts/permissions.py`: `is_staff` **or** `role == ADMIN`) |
+| `/api/profesor/{id}/` DELETE and `reset-password/` | additionally refuse an ADMIN target (`eh_admin`) and the caller's own account (`rasik`) |
 | All other attendance routes | Scoped by queryset to `request.user` — a teacher cannot read another's data even by guessing an id |
 | `/admin/` | Django session auth, staff only |
 
@@ -570,6 +583,8 @@ reading the code.
 | 15 | Django's `TIME_ZONE` is `Asia/Dili`; the home screen mock in the original design showed "WIB" (UTC+7). **UNVERIFIED** whether any client formats times in a non-Dili zone. |
 | 16 | ~~`estadu` values never set~~ **Resolved:** `POST /api/prezensa/status/` (admin) writes ABSENT/LEAVE/MISSION/HOLIDAY over a range. |
 | 17 | ~~`obs` never written~~ **Resolved:** written by the same endpoint. |
+| 21 | **2026-08-07:** the roster (`GET /api/profesor/`) now lists ADMIN accounts as well as PROFESSOR, matching the reports. Because admins are no longer hidden, DELETE and reset-password carry an explicit `eh_admin` guard — previously an admin was safe only by being invisible. |
+| 22 | **2026-08-07:** `POST /api/profesor/{id}/reset-password/` added. No self-service password change exists for anyone, and no password is e-mailed — both the initial and the reset are handed over in person. |
 | 20 | **2026-08-06 rename:** `Prezensa.estadu` → `status`, values PREZENTE/FALTA/LISENSA/MISAUN/FERIADU → PRESENT/ABSENT/LEAVE/MISSION/HOLIDAY, endpoint `/api/prezensa/estadu/` → `/api/prezensa/status/`; migration `attendance/0003` maps existing rows. **Both clients must rename** the field, the payload key and the URL; `status_display` keeps the Tetun label. |
 
 ### Environment
