@@ -1,5 +1,6 @@
 import os
 import tempfile
+from datetime import date
 from io import BytesIO
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -12,6 +13,7 @@ from .models import User
 MEDIA_TEMP = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 
 SENHA = 'senha-forte-123'
+SENHA_ADMIN = 'senha-admin-456'
 
 
 def foto(name='martinho.jpg'):
@@ -178,12 +180,13 @@ class AuthTests(APITestCase):
         self.assertEqual(response.status_code, 401)
 
 
+@MEDIA_TEMP
 class ProfesorApiTests(APITestCase):
-    """The dashboard roster: /api/profesor/ (plan R1, R3, R4)."""
+    """The dashboard roster: /api/profesor/ (plan R1, R3, R4, delete)."""
 
     def setUp(self):
         self.admin = User.objects.create_superuser(
-            email='joao@eti-dili.tl', password='x', numeru_id=1,
+            email='joao@eti-dili.tl', password=SENHA_ADMIN, numeru_id=1,
             naran_kompletu='João Gaio', kargu='Diretor',
         )
         self.profesor = User.objects.create_user(
@@ -203,7 +206,10 @@ class ProfesorApiTests(APITestCase):
         naran = {row['naran_kompletu']: row for row in response.json()}
         self.assertIn('Martinho Martins', naran)
         self.assertIn('Benedito Soares', naran)
-        self.assertNotIn('João Gaio', naran)
+        # Admins are listed too, so the roster agrees with every report screen.
+        self.assertIn('João Gaio', naran)
+        self.assertEqual(naran['João Gaio']['role'], 'ADMIN')
+        self.assertEqual(naran['João Gaio']['role_display'], 'Administradór')
 
         self.assertFalse(naran['Benedito Soares']['is_active'])
         self.assertEqual(naran['Martinho Martins']['numeru_id'], 6)
@@ -279,16 +285,183 @@ class ProfesorApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 200, response.content)
 
-    def test_delete_and_put_are_not_allowed(self):
-        self.assertEqual(
-            self.client.delete(f'/api/profesor/{self.profesor.pk}/').status_code, 405
-        )
+    def test_put_is_not_allowed(self):
         self.assertEqual(
             self.client.put(
                 f'/api/profesor/{self.profesor.pk}/', {}, format='json'
             ).status_code,
             405,
         )
+
+    # -- DELETE ---------------------------------------------------------
+
+    def hamos(self, profesor=None, **corpu):
+        return self.client.delete(
+            f'/api/profesor/{(profesor or self.profesor).pk}/', corpu, format='json'
+        )
+
+    def test_delete_removes_the_teacher(self):
+        response = self.hamos(password=SENHA_ADMIN)
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertFalse(User.objects.filter(pk=self.profesor.pk).exists())
+
+    def test_delete_cascades_to_the_whole_attendance_history(self):
+        from datetime import time
+
+        from attendance.models import ListaPrezensa, Marka, Prezensa
+
+        from .tests_helpers import punch_evidence
+
+        prezensa = Prezensa.objects.ba_loron(self.profesor, date(2026, 2, 18))
+        marka = prezensa.clock_in(oras=time(8, 3), **punch_evidence())
+        foto_path = marka.foto.path
+        self.assertTrue(os.path.exists(foto_path))
+
+        response = self.hamos(password=SENHA_ADMIN)
+        self.assertEqual(response.status_code, 204, response.content)
+
+        self.assertFalse(User.objects.filter(pk=self.profesor.pk).exists())
+        self.assertEqual(ListaPrezensa.objects.count(), 0)
+        self.assertEqual(Prezensa.objects.count(), 0)
+        self.assertEqual(Marka.objects.count(), 0)
+        # The evidence file goes with the rows, not left orphaned on disk.
+        self.assertFalse(os.path.exists(foto_path))
+
+    def test_delete_without_password_is_refused(self):
+        response = self.hamos()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'password_presiza')
+        self.assertTrue(User.objects.filter(pk=self.profesor.pk).exists())
+
+    def test_delete_with_wrong_password_is_refused(self):
+        response = self.hamos(password='sala-tebes')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'password_sala')
+        self.assertTrue(User.objects.filter(pk=self.profesor.pk).exists())
+
+    def test_the_targets_password_does_not_work(self):
+        # The check is on the caller, not on whoever is being removed.
+        self.profesor.set_password('senha-profesor')
+        self.profesor.save()
+
+        response = self.hamos(password='senha-profesor')
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'password_sala')
+        self.assertTrue(User.objects.filter(pk=self.profesor.pk).exists())
+
+    def test_an_admin_cannot_delete_their_own_account(self):
+        # A staff account carrying role=PROFESSOR can reach its own row.
+        self.admin.role = User.Role.PROFESSOR
+        self.admin.save()
+
+        response = self.hamos(profesor=self.admin, password=SENHA_ADMIN)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'rasik')
+        self.assertTrue(User.objects.filter(pk=self.admin.pk).exists())
+
+    def test_an_admin_account_cannot_be_deleted(self):
+        seluk = User.objects.create_superuser(
+            email='seluk@eti-dili.tl', password='x', numeru_id=99,
+            naran_kompletu='Admin Seluk',
+        )
+        response = self.hamos(profesor=seluk, password=SENHA_ADMIN)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'eh_admin')
+        self.assertTrue(User.objects.filter(pk=seluk.pk).exists())
+
+    # -- Reset password -------------------------------------------------
+
+    def reset(self, profesor=None, **corpu):
+        alvo = profesor or self.profesor
+        return self.client.post(
+            f'/api/profesor/{alvo.pk}/reset-password/', corpu, format='json'
+        )
+
+    def test_reset_sets_the_new_password(self):
+        response = self.reset(
+            password_foun='SenhaFoun-2026', password_konfirma='SenhaFoun-2026'
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.profesor.refresh_from_db()
+        self.assertTrue(self.profesor.check_password('SenhaFoun-2026'))
+        # The plain text is never echoed back -- the admin typed it.
+        self.assertNotIn('SenhaFoun-2026', response.content.decode())
+
+    def test_reset_revokes_the_teachers_open_sessions(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        refresh = RefreshToken.for_user(self.profesor)
+        self.reset(
+            password_foun='SenhaFoun-2026', password_konfirma='SenhaFoun-2026'
+        )
+
+        # The phone that was already logged in can no longer refresh.
+        response = self.client.post(
+            '/api/auth/refresh/', {'refresh': str(refresh)}, format='json'
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_reset_refuses_when_the_two_fields_differ(self):
+        response = self.reset(
+            password_foun='SenhaFoun-2026', password_konfirma='Seluk-2026'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'password_la_hanesan')
+        self.profesor.refresh_from_db()
+        self.assertFalse(self.profesor.check_password('SenhaFoun-2026'))
+
+    def test_reset_without_the_fields_is_refused(self):
+        response = self.reset()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'password_presiza')
+
+    def test_reset_refuses_a_weak_password(self):
+        response = self.reset(password_foun='123', password_konfirma='123')
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body['code'], 'password_fraku')
+        self.assertTrue(body['erros'])
+
+    def test_reset_refuses_an_admin_target(self):
+        seluk = User.objects.create_superuser(
+            email='seluk@eti-dili.tl', password='x', numeru_id=99,
+            naran_kompletu='Admin Seluk',
+        )
+        response = self.reset(
+            profesor=seluk,
+            password_foun='SenhaFoun-2026', password_konfirma='SenhaFoun-2026',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'eh_admin')
+
+    def test_reset_refuses_your_own_account(self):
+        self.admin.role = User.Role.PROFESSOR
+        self.admin.save()
+        response = self.reset(
+            profesor=self.admin,
+            password_foun='SenhaFoun-2026', password_konfirma='SenhaFoun-2026',
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'rasik')
+
+    def test_an_ordinary_teacher_cannot_reset(self):
+        self.client.force_authenticate(self.profesor)
+        response = self.reset(
+            profesor=self.inativu,
+            password_foun='SenhaFoun-2026', password_konfirma='SenhaFoun-2026',
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_an_ordinary_teacher_cannot_delete(self):
+        self.client.force_authenticate(self.profesor)
+        self.assertEqual(self.hamos(password=SENHA_ADMIN).status_code, 403)
+        self.assertTrue(User.objects.filter(pk=self.profesor.pk).exists())
+
+    def test_anonymous_cannot_delete(self):
+        self.client.force_authenticate(None)
+        self.assertEqual(self.hamos(password=SENHA_ADMIN).status_code, 401)
+        self.assertTrue(User.objects.filter(pk=self.profesor.pk).exists())
 
     def test_ordinary_teacher_cannot_use_the_roster(self):
         self.client.force_authenticate(self.profesor)
