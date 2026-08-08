@@ -51,7 +51,6 @@ class User(AbstractUser):
     class Role(models.TextChoices):
         ADMIN = 'ADMIN', _('Administradór')
         PROFESSOR = 'PROFESSOR', _('Professór')
-        ESTUDANTE = 'ESTUDANTE', _('Estudante')
 
     class Sexu(models.TextChoices):
         MANE = 'MANE', _('Mane')
