@@ -51,7 +51,11 @@ Rules the client must implement:
 
 Plain array (no pagination envelope), ordered by `naran_kompletu`,
 **deactivated accounts included** — filter/badge client-side on `is_active`.
-Only `role=PROFESSOR` accounts appear; admins are not listed.
+
+**Since 2026-08-07 the roster lists `PROFESSOR` *and* `ADMIN` accounts**, so it
+agrees with `ohin-hotu` / `hotu` / `istoria`, which always covered both. Badge
+admins from `role` / `role_display` and hide the destructive buttons on those
+rows — the API refuses `DELETE` and `reset-password` for them (`eh_admin`).
 
 ```json
 [{
@@ -85,11 +89,62 @@ map onto the two existing toasts. Other validation errors arrive DRF-style
 ### `PATCH /api/profesor/{id}/`
 
 Any subset of the POST fields plus `is_active`. Deactivation is this soft
-toggle — **there is no DELETE** (405), sheets reference the account. Returns
-the updated roster row. Same duplicate codes as POST.
+toggle and keeps the attendance history — prefer it. Returns the updated
+roster row. Same duplicate codes as POST. `PUT` is 405.
 
 A deactivated teacher drops out of `ohin-hotu` and `hotu` results (both
 filter `is_active=True`), so Painel counts shrink accordingly.
+
+### `DELETE /api/profesor/{id}/`
+
+**Irreversible.** Removes the teacher and, by CASCADE, every monthly sheet,
+day row and punch they ever made, plus their photo files on disk.
+
+```json
+{ "password": "<the signed-in admin's own password>" }
+```
+
+| Code | Body | When |
+| --- | --- | --- |
+| `204` | — | Deleted |
+| `400` | `{detail, code: "password_presiza"}` | No `password` in the body |
+| `403` | `{detail, code: "password_sala"}` | Wrong password |
+| `403` | `{detail, code: "rasik"}` | Deleting your own account |
+| `403` | `{detail, code: "eh_admin"}` | Target is an ADMIN — demote to PROFESSOR first |
+| `404` | — | No such account |
+
+The password is the **caller's**, not the target's. The dashboard asks for it
+twice and only sends one copy; the server check is what actually holds, since
+anything can call the endpoint directly.
+
+### `POST /api/profesor/{id}/reset-password/`
+
+A teacher who forgets their password has no self-service path — no e-mail
+delivery, no reset link. They contact the admin, who sets a new one here and
+hands it over.
+
+```json
+{ "password_foun": "SenhaFoun-2026", "password_konfirma": "SenhaFoun-2026" }
+```
+
+Both fields are required and **must be identical**. The server compares them
+too, so a form that forgot to check cannot slip through.
+
+| Code | Body | When |
+| --- | --- | --- |
+| `200` | `{detail, sesaun_taka, profesor: {...}}` | Password changed |
+| `400` | `{detail, code: "password_presiza"}` | A field is missing |
+| `400` | `{detail, code: "password_la_hanesan"}` | The two fields differ |
+| `400` | `{detail, code: "password_fraku", erros: [...]}` | Fails Django's validators (too short, too common, all numeric, too similar to the name/email). `erros` is the list of messages, already user-readable |
+| `403` | `{detail, code: "eh_admin"}` | Target is an ADMIN |
+| `403` | `{detail, code: "rasik"}` | Target is the caller |
+
+**The new password is never returned** — the admin typed it, so the client
+already has it. Show it once in a hand-over card with a copy button.
+
+`sesaun_taka` is how many of that teacher's open sessions were revoked: a reset
+blacklists every refresh token they had, so a phone already logged in stops
+working and must sign in again with the new password.
 
 ## 3. Today, whole school — `GET /api/prezensa/ohin-hotu/` (admin)
 
@@ -260,6 +315,11 @@ Errors are `400/403/404` with `{detail, code?, ...extra}`:
 | `invalid_period` | `hotu`, `status` POST | fix pickers |
 | `invalid_profesor` | `hotu`, `status` POST | shouldn't happen from UI |
 | `iha_marka` | `status` POST/DELETE | show conflicting `loron`, offer to view the day |
+| `password_presiza` / `password_sala` | `profesor` DELETE | keep the modal open, clear both password fields |
+| `rasik` | `profesor` DELETE / reset-password | "La bele … konta rasik.", close the modal |
+| `eh_admin` | `profesor` DELETE / reset-password | admin rows are read-only; hide both buttons |
+| `password_la_hanesan` | reset-password | the two fields differ — should be caught by the form first |
+| `password_fraku` | reset-password | show `erros[]` under the field |
 | `token_not_valid` | refresh/logout | refresh → re-login |
 | — (`403`) | any admin route | account lacks `EhAdmin`; send to login or hide UI |
 
@@ -276,8 +336,10 @@ and there is no CSV endpoint (Relatóriu exports client-side from §4 rows).
 
 ## 10. Not implemented (yet)
 
-- **Password reset** — `password_inisial` at creation is the only issuance;
-  if an admin loses it there is no recovery endpoint.
-- **E-mail delivery** of initial passwords (R3's original wording) — adjust
-  the modal hint to "hand the password over" until it exists.
+- **Self-service password change** — a teacher cannot change their own
+  password, and an admin cannot change theirs from the roster (`rasik`). Both
+  go through `manage.py` or Django admin for now.
+- **E-mail delivery** of passwords — neither the initial one nor a reset is
+  sent anywhere. Both are handed over in person, which is why each is shown
+  once in a copy-able card.
 - Pagination — nothing paginates; every list is a plain array.
