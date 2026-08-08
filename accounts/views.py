@@ -1,13 +1,24 @@
+import logging
+
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.crypto import get_random_string
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+
+from attendance.models import Marka
 
 from .models import User
 from .permissions import EhAdmin
@@ -16,10 +27,14 @@ from .serializers import (
     LoginSerializer,
     LogoutSerializer,
     ProfesorAtualizaSerializer,
+    ProfesorHasaiSerializer,
     ProfesorKriaSerializer,
+    ProfesorResetPasswordSerializer,
     ProfesorRosterSerializer,
     UserSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class LoginView(TokenObtainPairView):
@@ -99,17 +114,34 @@ class ProfesorViewSet(mixins.ListModelMixin,
     """
     The dashboard's teacher roster (plan R1/R3/R4).
 
-    The list includes deactivated accounts, because the dashboard shows them
-    with a "Dezativadu" badge and offers reactivation. There is no DELETE --
-    sheets reference the account, so leaving is PATCH {"is_active": false}.
+    Lists **teachers and admins**, matching the reports
+    (`attendance.views.profesores_relatoriu`) -- the director keeps a sheet and
+    an account like everyone else, so hiding them here only made the roster
+    disagree with every other screen. Deactivated accounts are included, since
+    the dashboard badges them "Dezativadu" and offers reactivation.
+
+    Leaving the school is PATCH {"is_active": false}, which keeps the sheets;
+    DELETE is the irreversible one and takes the whole history with it. Neither
+    DELETE nor the password reset may target an ADMIN -- see `_eh_admin`.
     """
 
     serializer_class = ProfesorRosterSerializer
     permission_classes = [IsAuthenticated, EhAdmin]
-    http_method_names = ['get', 'post', 'patch', 'head', 'options']
+    http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
 
     def get_queryset(self):
-        return User.objects.filter(role=User.Role.PROFESSOR)
+        return User.objects.filter(
+            role__in=[User.Role.PROFESSOR, User.Role.ADMIN]
+        )
+
+    @staticmethod
+    def _eh_admin(alvo):
+        """
+        An admin account is off limits to the roster's destructive actions.
+        Until now they were simply invisible here; with the list widened, the
+        guard has to be said out loud or one admin could remove another.
+        """
+        return alvo.is_staff or alvo.role == User.Role.ADMIN
 
     def _duplikadu(self, data, instance=None):
         """
@@ -175,3 +207,179 @@ class ProfesorViewSet(mixins.ListModelMixin,
                 profesor, context=self.get_serializer_context()
             ).data
         )
+
+    @action(detail=True, methods=['post'], url_path='reset-password')
+    def reset_password(self, request, pk=None):
+        """
+        The admin sets a new password for a teacher who lost theirs.
+
+        There is no self-service reset -- no e-mail delivery, no reset link --
+        so the teacher contacts the admin and the admin hands the new password
+        over in person. The plain text is never stored and never returned: the
+        admin typed it and already has it.
+        """
+        alvo = self.get_object()
+
+        if alvo.pk == request.user.pk:
+            return Response(
+                {
+                    'detail': "La bele troka password rasik iha ne'e.",
+                    'code': 'rasik',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if self._eh_admin(alvo):
+            return Response(
+                {
+                    'detail': 'La bele troka password ba konta administradór.',
+                    'code': 'eh_admin',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        payload = ProfesorResetPasswordSerializer(data=request.data)
+        if not payload.is_valid():
+            erru = payload.errors
+            # The "two fields differ" case carries its own code; anything else
+            # is a plain missing-field error.
+            if erru.get('code') == 'password_la_hanesan' or 'password_la_hanesan' in str(erru):
+                return Response(
+                    {'detail': 'Password rua la hanesan.', 'code': 'password_la_hanesan'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {
+                    'detail': 'Presiza hatama password foun dala rua.',
+                    'code': 'password_presiza',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        senha = payload.validated_data['password_foun']
+        try:
+            # Django's configured validators: length, common passwords, all
+            # numeric, similarity to the email and name.
+            validate_password(senha, user=alvo)
+        except DjangoValidationError as exc:
+            return Response(
+                {
+                    'detail': ' '.join(exc.messages),
+                    'code': 'password_fraku',
+                    'erros': exc.messages,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        alvo.set_password(senha)
+        alvo.save(update_fields=['password'])
+
+        # Old sessions must not survive a reset: a phone already logged in
+        # would keep working, which defeats the point when the reset is
+        # because the account was compromised.
+        sesaun = 0
+        for token in OutstandingToken.objects.filter(user=alvo):
+            _blacklisted, kriadu = BlacklistedToken.objects.get_or_create(token=token)
+            sesaun += int(kriadu)
+
+        logger.warning(
+            'password reset: actor=id=%s alvo=id=%s numeru_id=%s sesaun_taka=%s',
+            request.user.pk, alvo.pk, alvo.numeru_id, sesaun,
+        )
+
+        return Response({
+            'detail': f'Password foun ba {alvo.naran_kompletu} rai ona.',
+            'sesaun_taka': sesaun,
+            'profesor': ProfesorRosterSerializer(
+                alvo, context=self.get_serializer_context()
+            ).data,
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Remove a teacher and, by CASCADE, every sheet, day and punch they ever
+        made. Irreversible -- the dashboard asks for the password twice and
+        warns before it gets here.
+
+        An ADMIN account is refused outright: the roster now lists admins, so
+        the old "invisible, therefore safe" protection is gone.
+        """
+        alvo = self.get_object()
+
+        payload = ProfesorHasaiSerializer(data=request.data)
+        if not payload.is_valid():
+            return Response(
+                {
+                    'detail': 'Presiza hatama password atu konfirma.',
+                    'code': 'password_presiza',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Deleting yourself would lock the school out of its own dashboard.
+        if alvo.pk == request.user.pk:
+            return Response(
+                {'detail': 'La bele hamos konta rasik.', 'code': 'rasik'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if self._eh_admin(alvo):
+            return Response(
+                {
+                    'detail': 'La bele hamos konta administradór. '
+                              'Muda role ba PROFESSOR uluk.',
+                    'code': 'eh_admin',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # The caller's own password, not the target's: it proves who is at the
+        # keyboard, which is the point of asking at all.
+        if not request.user.check_password(payload.validated_data['password']):
+            return Response(
+                {'detail': 'Password sala.', 'code': 'password_sala'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Collected before the delete, because afterwards there is no row left
+        # to tell us which files belonged to this teacher.
+        fotos = _fotos_profesor(alvo)
+        identidade = f'id={alvo.pk} numeru_id={alvo.numeru_id} email={alvo.email}'
+
+        alvo.delete()
+        _hasai_fotos(fotos)
+
+        logger.warning(
+            'profesor hamos: actor=id=%s alvo=%s fotos=%s',
+            request.user.pk, identidade, len(fotos),
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _fotos_profesor(profesor):
+    """
+    Every image the teacher owns -- their profile photo and the evidence photo
+    of each punch -- as (storage, name) pairs so any storage backend works.
+    """
+    fotos = []
+    if profesor.foto:
+        fotos.append((profesor.foto.storage, profesor.foto.name))
+
+    for marka in Marka.objects.filter(prezensa__lista__profesor=profesor).only('foto'):
+        if marka.foto:
+            fotos.append((marka.foto.storage, marka.foto.name))
+
+    return fotos
+
+
+def _hasai_fotos(fotos):
+    """
+    Delete the files whose rows have just gone. A file that cannot be removed
+    is logged and skipped: the rows are already committed, and failing here
+    would report a delete that did in fact happen.
+    """
+    for storage, name in fotos:
+        try:
+            storage.delete(name)
+        except OSError as exc:
+            logger.warning('la bele hasai foto %s: %s', name, exc)
