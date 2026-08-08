@@ -332,7 +332,7 @@ erDiagram
     <div class="sub">Relationships</div>
     <div class="rel">
       <div class="line1"><span class="badge b-fk">FK</span> profesor → <strong>accounts.User</strong> · related_name <code>lista_prezensa</code> · on_delete CASCADE</div>
-      <div class="plain"><strong>One teacher has many monthly sheets; each sheet belongs to exactly one teacher.</strong> Deleting the user deletes their whole attendance history.</div>
+      <div class="plain"><strong>One teacher has many monthly sheets; each sheet belongs to exactly one teacher.</strong> Deleting the user deletes their whole attendance history — which is exactly what <code>DELETE /api/profesor/{id}/</code> does, behind an admin password prompt.</div>
     </div>
     <div class="rel">
       <div class="line1"><span class="badge b-fk">reverse FK</span> ← <strong>Prezensa</strong> · <code>lista.prezensa</code></div>
