@@ -75,6 +75,40 @@ class ProfesorAtualizaSerializer(serializers.ModelSerializer):
         ]
 
 
+class ProfesorResetPasswordSerializer(serializers.Serializer):
+    """
+    POST /api/profesor/{id}/reset-password/ -- the admin types the new password
+    twice. Both copies travel and the server compares them, so a mismatched
+    form cannot slip through a client that forgot to check.
+    """
+
+    password_foun = serializers.CharField(write_only=True, trim_whitespace=False)
+    password_konfirma = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs['password_foun'] != attrs['password_konfirma']:
+            raise serializers.ValidationError(
+                {'detail': 'Password rua la hanesan.', 'code': 'password_la_hanesan'}
+            )
+        return attrs
+
+
+class ProfesorHasaiSerializer(serializers.Serializer):
+    """
+    DELETE /api/profesor/{id}/ -- the caller re-types their own password.
+
+    The dashboard asks for it twice, but only one copy travels: the second
+    field is friction for the person at the keyboard, this is the check that
+    actually holds, because anything can call the endpoint directly.
+    """
+
+    password = serializers.CharField(
+        write_only=True,
+        style={'input_type': 'password'},
+        trim_whitespace=False,
+    )
+
+
 class FotoSerializer(serializers.ModelSerializer):
     """
     The photo upload on the Perfil screen. `foto` is the only field a teacher
