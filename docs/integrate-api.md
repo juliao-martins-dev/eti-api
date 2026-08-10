@@ -303,10 +303,45 @@ Read-only; the school's coordinates are deliberately never included.
 
 ## 7. Evidence photos
 
-`marka.foto` and profile `foto` are absolute URLs — render them directly.
+Every punch carries **two** ways to reach its photo:
+
+| Field | Use it for |
+| --- | --- |
+| `foto` | **displaying** — absolute URL straight to the file, no auth, fast |
+| `foto_download` | **saving/exporting** — `GET /api/marka/{id}/foto/`, token required, streams the same bytes |
+| `naran_foto_download` | the filename that download will use |
+
+Punch photos are stored under a readable, predictable name:
+
+```
+prezensa/2026/08/punch_{numeru_id}_{naran-slug}_{checkin|checkout}_{YYYY-MM-DD}_{sesaun}.jpg
+prezensa/2026/08/punch_6_martinho-martins_checkin_2026-08-10_dader.jpg
+```
+
+`sesaun` (`dader`/`lorokraik`) is part of it because a teacher checks in twice a
+day — name, direction and date alone are not unique. `numeru_id` leads so two
+teachers whose names slugify alike cannot collide.
+
+> **Deployment consequence.** A readable path is a guessable one, and
+> `MEDIA_ROOT` is served with no authentication. **Do not expose `MEDIA_ROOT`
+> publicly in production** — serve it privately and let clients fetch photos
+> through `GET /api/marka/{id}/foto/`, which checks the token first. Left
+> public, anyone who sees one photo URL can enumerate every teacher's selfie
+> for any date.
+
+Profile photos (`User.foto`) keep uuid names — they are replaced repeatedly,
+and a recycled name once served the wrong person's picture.
+
+`GET /api/marka/{id}/foto/` returns `200` with
+`Content-Disposition: attachment; filename="…"` for the punch's own teacher or
+any admin; `403 {code: "la_iha_permisaun"}` for another teacher; `401`
+anonymous; `404 {code: "foto_lakon"}` when the row survives but the file does
+not.
+
 **Caveat:** `/media/` is served by Django only while `DEBUG=True`
-(`core/urls.py`); in production the web server must serve `MEDIA_ROOT` or
-every photo 404s. Flag this at deploy time.
+(`core/urls.py`); in production the web server must serve `MEDIA_ROOT` or every
+inline photo 404s. The download route works either way, since it streams
+through Django.
 
 ## 8. Error handling summary
 
