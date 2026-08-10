@@ -6,7 +6,9 @@ wrote four times a day and signed next to each one. In the app the time is
 stamped by the server and the signature is replaced by a photo plus GPS
 coordinates captured at the moment of the punch.
 
-The mobile client lives in the sibling folder `eti-mobile/`.
+Two clients consume it: `eti-mobile/` (Expo, the teachers) and
+`eti-dashboard/` (Next.js, the administration). This document walks one request
+end to end; `docs/plan.md` is the full project context.
 
 ---
 
@@ -27,7 +29,7 @@ to deploy behind.
 
 Boot sequence, in order:
 
-1. **`core/settings.py:26`** — `environ.Env.read_env(BASE_DIR / '.env')` loads
+1. **`core/settings.py`** — `environ.Env.read_env(BASE_DIR / '.env')` loads
    the `.env` file. This must run *before* any `env(...)` call; without it
    `SECRET_KEY` raises `ImproperlyConfigured` and the process dies at import.
 2. **Secrets and config are read from the environment** — `SECRET_KEY`,
@@ -63,14 +65,14 @@ sequenceDiagram
 
     App->>MW: POST /api/prezensa/checkin/ (Bearer token, multipart)
     MW->>URL: request (session, CSRF, auth middleware run first)
-    URL->>V: resolved to PrezensaViewSet.clock_in
+    URL->>V: resolved to PrezensaViewSet.checkin
     V->>V: JWTAuthentication -> request.user
     V->>V: IsAuthenticated
     V->>S: MarkaPrezensaSerializer(data=request.data).is_valid()
     S-->>V: validated foto, latitude, longitude, presizaun, sesaun
     V->>M: Prezensa.objects.ba_loron(user)
     M->>DB: get_or_create sheet + day row
-    V->>M: prezensa.clock_in(**evidencia)
+    V->>M: prezensa.checkin(**evidencia)
     M->>M: business rules + haversine distance
     M->>DB: INSERT attendance_marka
     V->>S: PrezensaOhinSerializer(prezensa)
@@ -79,28 +81,29 @@ sequenceDiagram
 
 **Step by step:**
 
-1. **Middleware** (`core/settings.py:84`) — the default Django chain: security
+1. **Middleware** (`core/settings.py`) — the default Django chain: security
    headers, session, common, CSRF, auth, messages, clickjacking. It runs on
    every request, but note what it does *not* do: it does **not** authenticate
    the API. `AuthenticationMiddleware` only populates `request.user` from a
    *session cookie*; the mobile app never has one, so at this stage
    `request.user` is `AnonymousUser`.
 
-2. **URL routing** — `core/urls.py` splits the tree three ways:
+2. **URL routing** — `core/urls.py` splits the tree four ways:
 
    | Prefix | Included from | Purpose |
    | --- | --- | --- |
-   | `/admin/` | `django.contrib.admin` | Django admin (no models registered yet) |
+   | `/admin/` | `django.contrib.admin` | Django admin (no project models registered) |
    | `/api/auth/` | `accounts/urls.py` | login, logout, refresh, verify, me |
-   | `/api/` | `attendance/urls.py` | `prezensa` and `lista-prezensa` routers |
+   | `/api/profesor/` | `accounts/urls.py` router | the roster (admin) |
+   | `/api/` | `attendance/urls.py` | `prezensa`, `lista-prezensa`, `konfig` |
 
-   Under `DEBUG`, `core/urls.py:29` also serves `/media/` so punch photos are
+   Under `DEBUG`, `core/urls.py` also serves `/media/` so punch photos are
    viewable locally. **In production the web server must serve `MEDIA_ROOT`
    instead — this line is a no-op when `DEBUG=False`.**
 
    `attendance/urls.py` uses a DRF `DefaultRouter`, so `PrezensaViewSet`
-   expands into `list`, `retrieve`, and five `@action`s: `ohin`,
-   `istoria`, `checkin`, `checkout`, and `ohin-hotu`.
+   expands into `list`, `retrieve`, and seven `@action`s: `ohin`, `istoria`,
+   `checkin`, `checkout`, `ohin-hotu`, `hotu` and `status`.
 
    `ohin-hotu` is the **only** endpoint that reads more than one teacher's
    data, so it is the only one carrying an extra permission
@@ -130,8 +133,8 @@ sequenceDiagram
    is the only way a day row is created: it `get_or_create`s the monthly
    `ListaPrezensa` *and* the `Prezensa` row, so the first punch of a month
    opens the sheet with no separate setup step. `Prezensa._rejistu()` then
-   enforces the rules — no duplicate punch in a session, no clock-out before
-   clock-in, no Saturday afternoon, the teacher inside the school's 100 m
+   enforces the rules — no duplicate punch in a session, no checkout before
+   checkin, no Saturday afternoon, the teacher inside the school's 100 m
    radius, and evidence always attached — and raises `ValidationError` with a
    `code` the view maps to a `400`.
 
@@ -141,7 +144,7 @@ sequenceDiagram
 
 8. **Response** — `PrezensaOhinSerializer` returns the whole day (the four
    book columns, rebuilt from the punches by the `oras_*` properties), the
-   state of the two buttons (`bele_clock_in` / `bele_clock_out`), and
+   state of the two buttons (`bele_checkin` / `bele_checkout`), and
    `marka_foun`, the punch just created. `201` on success; `400` with
    `{detail, code}` on a rule violation.
 
@@ -270,11 +273,11 @@ The shortest path through every layer above.
    fresh pair (the old refresh token is blacklisted).
 2. `GET /api/prezensa/ohin/` → `ba_loron()` creates the February 2026 sheet and
    the row for the 18th if this is the first punch of the month. Response says
-   `bele_clock_in: true`, `bele_clock_out: false`.
+   `bele_checkin: true`, `bele_checkout: false`.
 3. Teacher takes a selfie and presses **Clock In**. The app POSTs the photo and
    the device's coordinates to `/api/prezensa/checkin/`.
 4. `JWTAuthentication` resolves the user; `MarkaPrezensaSerializer` validates
-   the payload; `Prezensa.clock_in()` sees the time is before 13:00, so the
+   the payload; `Prezensa.checkin()` sees the time is before 13:00, so the
    punch belongs to the **DADER** session and the **TAMA** column.
 5. Rules pass, `Marka` is inserted, `distansia_metru` computes to 0 m and
    `iha_eskola` to `true`.
