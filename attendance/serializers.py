@@ -105,16 +105,16 @@ class PrezensaOhinSerializer(PrezensaSerializer):
     sesaun = serializers.SerializerMethodField()
     oras_tama = serializers.SerializerMethodField()
     oras_fila = serializers.SerializerMethodField()
-    bele_clock_in = serializers.SerializerMethodField()
-    bele_clock_out = serializers.SerializerMethodField()
+    bele_checkin = serializers.SerializerMethodField()
+    bele_checkout = serializers.SerializerMethodField()
 
     class Meta(PrezensaSerializer.Meta):
         fields = PrezensaSerializer.Meta.fields + [
             'sesaun',
             'oras_tama',
             'oras_fila',
-            'bele_clock_in',
-            'bele_clock_out',
+            'bele_checkin',
+            'bele_checkout',
         ]
         read_only_fields = fields
 
@@ -130,18 +130,18 @@ class PrezensaOhinSerializer(PrezensaSerializer):
     def get_oras_fila(self, obj):
         return obj.oras_ba(self._sesaun(obj), Tipu.FILA)
 
-    def get_bele_clock_in(self, obj):
+    def get_bele_checkin(self, obj):
         if obj.sabadu and self._sesaun(obj) == Sesaun.LOROKRAIK:
             return False
         return self.get_oras_tama(obj) is None
 
-    def get_bele_clock_out(self, obj):
+    def get_bele_checkout(self, obj):
         return self.get_oras_tama(obj) is not None and self.get_oras_fila(obj) is None
 
 
 class MarkaPrezensaSerializer(serializers.Serializer):
     """
-    Payload of the Clock In / Clock out buttons: the photo taken at the punch
+    Payload of the Check in / Check out buttons: the photo taken at the punch
     and where the device was when it was taken.
     """
 
