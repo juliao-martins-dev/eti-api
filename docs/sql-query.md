@@ -26,7 +26,7 @@ accounts_user ──< attendance_listaprezensa ──< attendance_prezensa ─�
 
 | Column | Allowed | Tetun label shown in the UI |
 | --- | --- | --- |
-| `role` | `ADMIN`, `PROFESSOR`, `ESTUDANTE` | Administradór / Professór / Estudante |
+| `role` | `ADMIN`, `PROFESSOR` | Administradór / Professór |
 | `status` | `PRESENT`, `ABSENT`, `LEAVE`, `MISSION`, `HOLIDAY` | Prezente / Falta / Lisensa / Misaun / Feriadu |
 | `sesaun` | `DADER`, `LOROKRAIK` | dader = morning, lorokraik = afternoon |
 | `tipu` | `TAMA`, `FILA` | tama = in, fila = out |
@@ -649,7 +649,206 @@ UNION ALL SELECT 'attendance_marka',         count(*) FROM attendance_marka;
 
 ---
 
-## 7. Things SQL cannot do for you
+## 7. Backup & restore
+
+Target directory: **`C:\workplace\eti-dili`** · plain `.sql` files.
+
+`pg_dump` is **not on PATH** on this machine — it ships with the server at
+`C:\Program Files\PostgreSQL\18\bin`. Every command below uses the full path;
+adjust `18` if you upgrade PostgreSQL.
+
+> The connection values are the same ones in `eti-api/.env`
+> (`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME`). **Never put `DB_PASSWORD` in a
+> script or a scheduled task file** — set `PGPASSWORD` for the session, or use
+> a [`pgpass.conf`](https://www.postgresql.org/docs/current/libpq-pgpass.html)
+> at `%APPDATA%\postgresql\pgpass.conf`.
+
+### 7.1 Back up now — run this, nothing to edit
+
+Every value below is already yours (`eti_2026_db`, `localhost:5432`, `postgres`,
+target `C:\workplace\eti-dili`). **The only thing to type is your password**
+where it says `PASSWORD-ITA-NIAN`. Paste the whole block.
+
+**PowerShell** — the file is dated automatically, e.g.
+`eti_2026_db_2026-08-08.sql`:
+
+```powershell
+$env:PGPASSWORD = "PASSWORD-ITA-NIAN"
+& "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h localhost -p 5432 -U postgres -d eti_2026_db --format=plain --encoding=UTF8 --create --clean --if-exists --no-owner --no-privileges --file="C:\workplace\eti-dili\eti_2026_db_$(Get-Date -Format yyyy-MM-dd).sql"
+$env:PGPASSWORD = ""
+```
+
+**Command Prompt (cmd.exe)** — fixed file name:
+
+```bat
+set PGPASSWORD=PASSWORD-ITA-NIAN
+"C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -h localhost -p 5432 -U postgres -d eti_2026_db --format=plain --encoding=UTF8 --create --clean --if-exists --no-owner --no-privileges --file="C:\workplace\eti-dili\eti_2026_db_backup.sql"
+set PGPASSWORD=
+```
+
+Success prints **nothing**. Check the file exists and is not empty:
+
+```powershell
+Get-ChildItem C:\workplace\eti-dili\*.sql | Select-Object Name, Length, LastWriteTime
+```
+
+An 82 KB file with 3 teachers is normal; the size grows with punches, not with
+photos (those are files, see §7.4).
+
+Run it **whenever you want** — before a migration, before deleting a teacher,
+at the end of a month. Automating it daily is optional: §7.5.
+
+Why each flag matters — drop one and the restore stops being complete:
+
+Why each flag matters — drop one and the restore stops being complete:
+
+| Flag | Why |
+| --- | --- |
+| `--format=plain` | a readable `.sql` you can restore with `psql`, as asked |
+| `--encoding=UTF8` | Tetun and Portuguese accents (`Profesór`, `Juñu`, `Sábadu`) survive. Without it Windows may write cp1252 and mangle them |
+| `--create` | the dump creates the database itself, so it restores onto a bare server |
+| `--clean --if-exists` | drops what is there first, so a re-restore is not a half-merge |
+| `--no-owner --no-privileges` | restores under whatever role you use, instead of failing on a missing `postgres` role on another machine |
+
+This dumps **all 15 tables**, not just the four app ones — `django_migrations`,
+`auth_permission`, `django_content_type`, the session and JWT-blacklist tables
+come along. That matters: a dump of only `accounts_*` and `attendance_*` would
+restore rows that Django then refuses to run against, because it would believe
+no migration had ever been applied.
+
+It also includes sequence positions, all primary/foreign/unique keys and every
+index — verified: 15 PK, 14 FK, 13 UNIQUE after a test restore.
+
+### 7.2 Restore
+
+The dump contains `DROP DATABASE` + `CREATE DATABASE`, so **connect to
+`postgres`, not to the database being replaced** — you cannot drop the database
+you are connected to.
+
+```bat
+set PGPASSWORD=your-password
+set PGCLIENTENCODING=UTF8
+"C:\Program Files\PostgreSQL\18\bin\psql.exe" ^
+  -h localhost -p 5432 -U postgres -d postgres ^
+  -v ON_ERROR_STOP=1 ^
+  -f "C:\workplace\eti-dili\eti_2026_db_backup.sql"
+set PGPASSWORD=
+```
+
+`ON_ERROR_STOP=1` is not optional: without it `psql` keeps going after a failed
+statement and reports success on a half-restored database.
+
+**Restore under a different name** (to test a backup without touching
+production) — the dump names the database in a few places, so rename them all:
+
+```powershell
+(Get-Content "C:\workplace\eti-dili\eti_2026_db_backup.sql") `
+  -replace 'eti_2026_db', 'eti_restore_test' `
+  | Set-Content -Encoding utf8 "C:\workplace\eti-dili\_restore_test.sql"
+```
+
+then restore that file the same way and point `DB_NAME` at it.
+
+### 7.3 Verify the restore (do this at least once)
+
+```sql
+-- 1. Row counts must match the source
+SELECT 'accounts_user' AS tabela, count(*) FROM accounts_user
+UNION ALL SELECT 'attendance_listaprezensa', count(*) FROM attendance_listaprezensa
+UNION ALL SELECT 'attendance_prezensa',      count(*) FROM attendance_prezensa
+UNION ALL SELECT 'attendance_marka',         count(*) FROM attendance_marka
+UNION ALL SELECT 'django_migrations',        count(*) FROM django_migrations;
+
+-- 2. Accents survived
+SELECT naran_kompletu, kargu FROM accounts_user ORDER BY id LIMIT 5;
+
+-- 3. Keys and indexes are back
+SELECT count(*) FILTER (WHERE contype='p') AS pk,
+       count(*) FILTER (WHERE contype='f') AS fk,
+       count(*) FILTER (WHERE contype='u') AS uniq
+FROM pg_constraint WHERE connamespace = 'public'::regnamespace;
+
+-- 4. Sequences continue where they left off — otherwise the next INSERT
+--    collides with an existing id
+SELECT last_value FROM accounts_user_id_seq;
+```
+
+Then from `eti-api/`, the checks that matter most:
+
+```bash
+python manage.py migrate --check   # schema matches the models, nothing pending
+python manage.py runserver         # log in — password hashes are restored intact
+```
+
+A full round-trip was run against this database: all row counts matched,
+accents survived, sequences and constraints restored, `migrate --check` passed
+and the ORM read the whole `Marka → Prezensa → ListaPrezensa → User` chain.
+
+### 7.4 The database alone is **not** a complete backup
+
+`Marka.foto` and `User.foto` store a **path**, not the image. Restore the
+database without the files and every punch photo — the evidence that replaced
+the signature — is a broken link.
+
+Back up the media directory in the same run:
+
+```powershell
+Compress-Archive -Path "C:\workplace\eti-dili\eti-api\media\*" `
+  -DestinationPath "C:\workplace\eti-dili\media_$(Get-Date -Format yyyy-MM-dd).zip" -Force
+```
+
+A complete backup is **two** artefacts: the `.sql` and the media archive. Keep
+them together — a `.sql` from Monday with photos from Friday restores rows
+pointing at files that do not exist yet.
+
+Also outside the dump: `.env` (secrets — back it up somewhere private, never in
+git) and the code itself (already in git).
+
+### 7.5 Daily automatic backup — **optional**
+
+Nothing above depends on this. §7.1 is the whole backup; set this up only if
+you would rather not remember to run it.
+
+Save as `C:\workplace\eti-dili\backup-eti.ps1`:
+
+```powershell
+# Daily backup of the ETI PREZENSA database and its photos.
+$ErrorActionPreference = "Stop"
+$loron  = Get-Date -Format yyyy-MM-dd
+$alvu   = "C:\workplace\eti-dili"
+$pgbin  = "C:\Program Files\PostgreSQL\18\bin"
+
+# Password comes from %APPDATA%\postgresql\pgpass.conf, never from this file.
+& "$pgbin\pg_dump.exe" -h localhost -p 5432 -U postgres -d eti_2026_db `
+  --format=plain --encoding=UTF8 --create --clean --if-exists `
+  --no-owner --no-privileges `
+  --file="$alvu\eti_2026_db_$loron.sql"
+
+Compress-Archive -Path "C:\workplace\eti-dili\eti-api\media\*" `
+  -DestinationPath "$alvu\media_$loron.zip" -Force
+
+# Keep 30 days; a backup you never prune fills the disk and then stops running.
+Get-ChildItem "$alvu\eti_2026_db_*.sql", "$alvu\media_*.zip" |
+  Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } |
+  Remove-Item -Force
+```
+
+Schedule it (run once, as Administrator):
+
+```powershell
+schtasks /create /tn "ETI PREZENSA backup" /sc daily /st 19:00 ^
+  /tr "powershell -NoProfile -ExecutionPolicy Bypass -File C:\workplace\eti-dili\backup-eti.ps1"
+```
+
+19:00 is after the last scheduled punch (17:30), so a backup never lands in the
+middle of the school day.
+
+> **A backup you have never restored is not a backup.** Restore into
+> `eti_restore_test` once a term, run §7.3, then drop it.
+
+---
+
+## 8. Things SQL cannot do for you
 
 | Task | Why | Do this instead |
 | --- | --- | --- |
