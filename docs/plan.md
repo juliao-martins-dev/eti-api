@@ -176,7 +176,8 @@ eti-dili/                          three independent git repositories
 | --- | --- |
 | Custom user, email login, teacher fields from the school roster | `accounts/models.py` |
 | Required unique staff number `numeru_id` | `accounts/models.py` |
-| Unique (uuid) filename per uploaded photo, so a URL is never recycled | `accounts/models.py` `naran_foto_uniku` |
+| Profile photos get a uuid filename, so a URL is never recycled | `accounts/models.py` `naran_foto_uniku` |
+| Punch photos get a readable filename: `punch_{numeru_id}_{naran}_{checkin\|checkout}_{data}_{sesaun}.ext` | `attendance/models.py` `foto_marka` |
 | JWT login returning tokens **plus** the profile in one response | `accounts/serializers.py` |
 | Logout via refresh-token blacklist | `accounts/views.py` |
 | Refresh with rotation + blacklist-after-rotation | `core/settings.py` |
@@ -201,6 +202,7 @@ eti-dili/                          three independent git repositories
 | Hand-written LEAVE/MISSION/HOLIDAY/ABSENT over a range, atomic, refusing punched days | `attendance/views.py` `status` |
 | Schedule + geofence settings exposed, without the coordinates | `attendance/views.py` `KonfigView` |
 | GPS precision tolerance — the server rounds instead of rejecting | `attendance/serializers.py` `KoordenadaField` |
+| Authorised photo download (owner or admin) streaming through the API | `attendance/views.py` `MarkaFotoView`, `models.py` `naran_foto_download` |
 | **100 automated tests**, all passing (40 accounts + 60 attendance) | `*/tests.py` |
 
 ### Admin dashboard — implemented
@@ -410,6 +412,7 @@ All paths **require the trailing slash**.
 | PATCH | `/api/profesor/{id}/` | Update / soft-(de)activate | Yes + **EhAdmin** | any subset + `is_active` → roster row; `PUT` → 405 |
 | DELETE | `/api/profesor/{id}/` | **Irreversible** delete: teacher + all sheets/days/punches + photo files | Yes + **EhAdmin** | `{password}` (the caller's own) → 204; 400 `password_presiza`, 403 `password_sala` / `rasik` / `eh_admin` |
 | POST | `/api/profesor/{id}/reset-password/` | Admin sets a new password for a teacher who lost theirs; revokes their open sessions | Yes + **EhAdmin** | `{password_foun, password_konfirma}` (must match) → 200 `{detail, sesaun_taka, profesor}`; 400 `password_presiza` / `password_la_hanesan` / `password_fraku`, 403 `eh_admin` / `rasik` |
+| GET | `/api/marka/{id}/foto/` | Download one punch photo under a readable name | Yes (owner **or** EhAdmin) | → the file with `Content-Disposition: attachment; filename="punch_<naran>_<checkin\|checkout>_<data>_<sesaun>.jpg"`; 403 `la_iha_permisaun`, 404 `foto_lakon` |
 | GET | `/api/konfig/` | Scheduled times + geofence settings | Yes | → `oras_*`, `limite_sesaun`, `eskola_raiu_metru`, `eskola_obriga_fatin`; **no coordinates** |
 | GET | `/api/lista-prezensa/` | Own monthly sheets | Yes | → `ListaPrezensaSerializer[]` with nested days |
 | GET | `/api/lista-prezensa/{id}/` | One monthly sheet | Yes | → sheet + `prezensa[]` |
@@ -664,6 +667,7 @@ below was found by reading the code on **2026-08-10**.
 | 8 | **No project models in Django admin** — the stubs are empty. Acceptable now that `eti-dashboard` covers review, but there is no fallback if the dashboard is down. |
 | 9 | `ESKOLA_OBRIGA_FATIN=False` is set in `eti-api/.env` for testing — **the geofence is currently disabled**; punches from anywhere are accepted. Must be `True` before real use. |
 | 10 | `SECRET_KEY` still carries the `django-insecure-` prefix and `ALLOWED_HOSTS=*`. |
+| 11a | **Punch photo paths are guessable by design** (`punch_6_martinho-martins_checkin_2026-08-10_dader.jpg`) and `MEDIA_ROOT` is served without auth. Serve `MEDIA_ROOT` privately in production and route photo access through `GET /api/marka/{id}/foto/`, or anyone with one URL can enumerate the rest. |
 | 11 | No size or dimension limit on uploads. A phone sends 3–8 MB per punch, ~4 punches/day/teacher, and nothing downscales them. |
 | 12 | Blacklist tables grow ~1 row per refresh; `flushexpiredtokens` is not scheduled anywhere. |
 | 13 | Logout cannot revoke an already-issued access token (≤15 min window) — inherent to stateless JWT, not a defect. |
