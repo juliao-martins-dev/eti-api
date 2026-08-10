@@ -1,8 +1,11 @@
 # eti-dashboard × eti-api — Integration Reference
 
 Every endpoint the admin dashboard needs, with real request/response shapes,
-read from the implemented code (`accounts/`, `attendance/`). This is the
-contract for swapping `lib/mock-data.ts` out of `lib/store.ts`.
+read from the implemented code (`accounts/`, `attendance/`).
+
+**The dashboard is fully wired to this API** — all six routes run on live data.
+This document is now the reference for changing that integration, and the
+contract any other client should follow. Last verified **2026-08-10**.
 
 Base URL: `<API_HOST>/api/` — **every path ends with a trailing slash**.
 Without it Django 301-redirects, the POST body is dropped, and the request
@@ -327,12 +330,23 @@ Errors are `400/403/404` with `{detail, code?, ...extra}`:
 
 ## 9. Endpoints that exist but the dashboard does not call
 
-`POST /api/prezensa/checkin|checkout/` (mobile punches, multipart),
-`GET /api/prezensa/ohin/` and `istoria/` (self-scoped),
-`GET /api/lista-prezensa/` (self-scoped sheets),
-`PATCH /api/auth/me/` (own photo only). Listed so nobody goes looking for an
-admin variant that doesn't exist — punch times are deliberately read-only,
-and there is no CSV endpoint (Relatóriu exports client-side from §4 rows).
+| Endpoint | Why not |
+| --- | --- |
+| `POST /api/prezensa/checkin/` · `checkout/` | the teacher's own punch, multipart, mobile only |
+| `GET /api/prezensa/ohin/` | self-scoped "my today"; the dashboard uses `ohin-hotu/` |
+| `GET /api/prezensa/` · `{id}/` | self-scoped day rows — **no consumer at all** |
+| `GET /api/lista-prezensa/` · `{id}/` | self-scoped monthly sheets — **no consumer at all** |
+| `PATCH /api/auth/me/` | own photo; the dashboard *does* use this for the admin's own picture |
+
+Listed so nobody goes looking for an admin variant that does not exist. Punch
+times are deliberately read-only — there is no endpoint that edits a recorded
+time — and there is no CSV/PDF endpoint, because Relatóriu builds both in the
+browser from §4 rows.
+
+**Naming note (2026-08-10):** the model methods behind the punch endpoints are
+`Prezensa.checkin()` / `checkout()`, the button flags are `bele_checkin` /
+`bele_checkout`, and the "you must check in first" error is `no_checkin`. The
+older `clock_*` spellings are gone from the wire entirely.
 
 ## 10. Not implemented (yet)
 
