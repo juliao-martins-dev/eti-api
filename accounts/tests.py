@@ -77,7 +77,8 @@ class AuthTests(APITestCase):
 
     def test_patch_me_replaces_the_photo(self):
         self.autentika()
-        tuan = self.profesor.foto.path
+        tuan_path = self.profesor.foto.path
+        tuan_name = self.profesor.foto.name
 
         response = self.client.patch(
             '/api/auth/me/', {'foto': foto('foun.jpg')}, format='multipart'
@@ -86,13 +87,44 @@ class AuthTests(APITestCase):
 
         # The whole profile comes back, pointing at the new file.
         body = response.json()
-        self.assertIn('foun', body['foto'])
         self.assertEqual(body['email'], self.profesor.email)
         self.assertEqual(body['numeru_id'], 6)
 
         self.profesor.refresh_from_db()
-        self.assertIn('foun', self.profesor.foto.name)
-        self.assertFalse(os.path.exists(tuan), 'the replaced file should be gone')
+        self.assertNotEqual(self.profesor.foto.name, tuan_name)
+        self.assertIn(self.profesor.foto.name, body['foto'])
+        self.assertTrue(os.path.exists(self.profesor.foto.path))
+        self.assertFalse(os.path.exists(tuan_path), 'the replaced file should be gone')
+
+    def test_a_stored_name_is_never_reused(self):
+        """
+        The clients always upload the same filename, and the old file is
+        deleted on replacement -- which used to free the name for the *next*
+        upload. A cached URL could then resolve to somebody else's photo.
+        """
+        self.autentika()
+        seluk = User.objects.create_user(
+            email='benedito@eti-dili.tl', password='x', numeru_id=8,
+            naran_kompletu='Benedito Soares',
+        )
+
+        naran = {self.profesor.foto.name}
+        for _ in range(3):
+            self.client.patch(
+                '/api/auth/me/', {'foto': foto('foto.jpg')}, format='multipart'
+            )
+            self.profesor.refresh_from_db()
+            self.assertNotIn(self.profesor.foto.name, naran)
+            naran.add(self.profesor.foto.name)
+
+        # A second account uploading the same filename cannot land on a name
+        # the first one has used.
+        self.client.force_authenticate(seluk)
+        self.client.patch(
+            '/api/auth/me/', {'foto': foto('foto.jpg')}, format='multipart'
+        )
+        seluk.refresh_from_db()
+        self.assertNotIn(seluk.foto.name, naran)
 
     def test_patch_me_ignores_every_field_but_the_photo(self):
         self.autentika()
