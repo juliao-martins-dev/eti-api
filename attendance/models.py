@@ -8,7 +8,19 @@ from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from accounts.models import naran_foto_uniku
+
 from .geo import distansia_husi_eskola, iha_eskola
+
+
+def foto_marka(instance, filename):
+    """
+    Punch evidence -- `upload_to` for `Marka.foto`. Kept in the same
+    year/month folders as before, with a name that is never reused so an old
+    URL can never come back pointing at somebody else's punch.
+    """
+    dia = getattr(instance.prezensa, 'data', None) or data_ohin()
+    return naran_foto_uniku(f'prezensa/{dia:%Y/%m}', filename)
 
 
 class Fulan(models.IntegerChoices):
@@ -349,7 +361,7 @@ class Marka(models.Model):
     rejistu_iha = models.DateTimeField(_('rejistu iha'), auto_now_add=True)
 
     # Evidence: the photo taken at the punch and where the device was.
-    foto = models.ImageField(_('foto'), upload_to='prezensa/%Y/%m/')
+    foto = models.ImageField(_('foto'), upload_to=foto_marka)
     latitude = models.DecimalField(
         _('latitude'),
         max_digits=9,
