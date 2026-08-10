@@ -16,9 +16,9 @@ technical school in Timor-Leste. Teachers clock in and out from a mobile app
 four times a day (morning in/out, afternoon in/out); the handwritten signature
 of the paper form is replaced by a photo taken at the punch plus GPS
 coordinates, and the time is stamped by the server rather than written by hand.
-Roles are `ADMIN`, `PROFESSOR` and `ESTUDANTE` (`eti-api/accounts/models.py`);
-only PROFESSOR is exercised today, with ADMIN/staff gating the school-wide daily
-report. Domain vocabulary and all model/field names are Tetun.
+Roles are `ADMIN` and `PROFESSOR` (`eti-api/accounts/models.py`): teachers punch,
+ADMIN/staff gates the school-wide reports and the roster. Domain vocabulary and
+all model/field names are Tetun.
 
 Source of the teacher data model: <https://eti-dili.sch.tl/dadus-professores/>
 (57 staff — 33 male, 24 female — at time of reading).
@@ -262,8 +262,8 @@ Every account: teachers, admins, later students. Extends `AbstractUser` with
 personnel record.
 
 - Key fields: `numeru_id` (PositiveInteger, **unique, required**, min 1),
-  `email` (unique), `naran_kompletu` (150), `role` (ADMIN/PROFESSOR/ESTUDANTE,
-  default PROFESSOR), `sexu` (MANE/FETO), `kargu` (120, free text),
+  `email` (unique), `naran_kompletu` (150), `role` (ADMIN/PROFESSOR, default
+  PROFESSOR), `sexu` (MANE/FETO), `kargu` (120, free text),
   `habilitasaun_literaria`, `disiplina_hanorin` (255), `nu_kontaktu`,
   `foto` (ImageField `fotos/`), `nivel_edukasaun` (choices), `area_estudu`.
 - `REQUIRED_FIELDS = ['numeru_id', 'naran_kompletu']`; ordering by name.
