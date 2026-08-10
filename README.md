@@ -38,7 +38,7 @@ client can disagree with another:
   refused with the measured distance in the error, so the teacher is told *how
   far off* they are. One env flag turns enforcement off without a deploy.
 - **Rules that cannot be bypassed:** no second punch in the same session, no
-  clock-out before clock-in, no Saturday afternoon (the sheet has none), and a
+  checkout before checkin, no Saturday afternoon (the sheet has none), and a
   database constraint behind each so it holds even under a race.
 - **Sundays are not working days**, anywhere — reports, grids and history all
   skip them, because the printed sheet does.
@@ -51,7 +51,7 @@ client can disagree with another:
   and even that is refused if the day already holds punches: evidence is never
   buried.
 
-**99 automated tests** cover the above.
+**100 automated tests** cover the above.
 
 ---
 
@@ -98,7 +98,7 @@ Auth is `Authorization: Bearer <access>` on everything except login/refresh/veri
 | --- | --- | --- | --- |
 | POST | `prezensa/checkin/` | arrival punch — `foto`, `latitude`, `longitude`, `presizaun?`, `sesaun?` | Bearer |
 | POST | `prezensa/checkout/` | departure punch, same payload | Bearer |
-| GET | `prezensa/ohin/` | today + the state of the two buttons (`bele_clock_in` / `bele_clock_out`) | Bearer |
+| GET | `prezensa/ohin/` | today + the state of the two buttons (`bele_checkin` / `bele_checkout`) | Bearer |
 | GET | `prezensa/istoria/` | one month or week, laid out like the paper sheet, with a summary | Bearer |
 | GET | `prezensa/` · `prezensa/{id}/` | own day rows | Bearer |
 | GET | `lista-prezensa/` · `{id}/` | own monthly sheets | Bearer |
@@ -126,7 +126,7 @@ Always `{"detail": "<Tetun, displayable as-is>", "code": "...", ...extra}`:
 | code | Meaning |
 | --- | --- |
 | `duplicate` | already punched this session (carries `oras`) |
-| `no_clock_in` | clock-out before clock-in |
+| `no_checkin` | checkout before checkin |
 | `no_session` | Saturday afternoon does not exist |
 | `dook_husi_eskola` | outside the geofence — carries `distansia` in metres |
 | `iha_marka` | the day already holds punches; nothing was written |
@@ -177,7 +177,7 @@ cp .env.example .env          # then fill it in — see the table below
 python manage.py migrate
 python manage.py createsuperuser      # prompts email, numeru_id, naran_kompletu
 python manage.py runserver 0.0.0.0:8000   # 0.0.0.0 so a phone on the LAN can reach it
-python manage.py test                     # 99 tests
+python manage.py test --noinput           # 100 tests
 ```
 
 `.env` keys (**names only — never commit values**):
