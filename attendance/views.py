@@ -462,7 +462,7 @@ class PrezensaViewSet(mixins.ListModelMixin,
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['post'], url_path='checkin', url_name='checkin')
-    def clock_in(self, request):
+    def checkin(self, request):
         """
         Arrival punch. Writes ORAS_DADER_TAMA before 13:00 and
         ORAS_LOROKRAIK_TAMA after it, unless `sesaun` says otherwise.
@@ -470,7 +470,7 @@ class PrezensaViewSet(mixins.ListModelMixin,
         return self._marka(request, tama=True)
 
     @action(detail=False, methods=['post'], url_path='checkout', url_name='checkout')
-    def clock_out(self, request):
+    def checkout(self, request):
         """
         Departure punch. Writes ORAS_DADER_FILA before 13:00 and
         ORAS_LOROKRAIK_FILA after it, unless `sesaun` says otherwise.
@@ -485,9 +485,9 @@ class PrezensaViewSet(mixins.ListModelMixin,
         evidensia = payload.validated_data
         try:
             if tama:
-                marka = prezensa.clock_in(**evidensia)
+                marka = prezensa.checkin(**evidensia)
             else:
-                marka = prezensa.clock_out(**evidensia)
+                marka = prezensa.checkout(**evidensia)
         except ValidationError as exc:
             erru = {'detail': exc.messages[0], 'code': exc.code}
             # e.g. how far off the teacher is, so the app can say it plainly.
