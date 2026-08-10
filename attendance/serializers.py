@@ -1,6 +1,7 @@
 from decimal import ROUND_DOWN
 
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -39,6 +40,11 @@ class MarkaSerializer(serializers.ModelSerializer):
     kolumna = serializers.CharField(read_only=True)
     oras_orariu = serializers.TimeField(read_only=True)
     atrazadu = serializers.BooleanField(read_only=True)
+    # `foto` is the raw file (uuid name, no auth). `foto_download` goes through
+    # the API, which checks the token and renames it to something a human can
+    # file: punch_juliao-martins_checkin_2026-08-10_dader.jpg
+    foto_download = serializers.SerializerMethodField()
+    naran_foto_download = serializers.CharField(read_only=True)
 
     class Meta:
         model = Marka
@@ -59,8 +65,15 @@ class MarkaSerializer(serializers.ModelSerializer):
             'presizaun',
             'distansia_metru',
             'iha_eskola',
+            'foto_download',
+            'naran_foto_download',
         ]
         read_only_fields = fields
+
+    def get_foto_download(self, obj):
+        url = reverse('marka-foto', kwargs={'pk': obj.pk})
+        pedidu = self.context.get('request')
+        return pedidu.build_absolute_uri(url) if pedidu else url
 
 
 class PrezensaSerializer(serializers.ModelSerializer):
