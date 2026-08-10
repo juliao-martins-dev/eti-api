@@ -345,7 +345,7 @@ class ProfesorApiTests(APITestCase):
         from .tests_helpers import punch_evidence
 
         prezensa = Prezensa.objects.ba_loron(self.profesor, date(2026, 2, 18))
-        marka = prezensa.clock_in(oras=time(8, 3), **punch_evidence())
+        marka = prezensa.checkin(oras=time(8, 3), **punch_evidence())
         foto_path = marka.foto.path
         self.assertTrue(os.path.exists(foto_path))
 
