@@ -267,14 +267,14 @@ class Prezensa(models.Model):
     def oras_lorokraik_fila(self):
         return self.oras_ba(Sesaun.LOROKRAIK, Tipu.FILA)
 
-    # -- Clock in / clock out -------------------------------------------------
+    # -- Check in / check out -------------------------------------------------
 
     @classmethod
     def sesaun_ba(cls, oras):
         """Which session a punch made at `oras` belongs to."""
         return Sesaun.DADER if oras < cls.LIMITE_SESAUN else Sesaun.LOROKRAIK
 
-    def clock_in(self, **evidensia):
+    def checkin(self, **evidensia):
         """
         Record the arrival punch (TAMA) for the current session. The evidence
         (`foto`, `latitude`, `longitude`, optional `presizaun`) replaces the
@@ -282,7 +282,7 @@ class Prezensa(models.Model):
         """
         return self._rejistu(Tipu.TAMA, **evidensia)
 
-    def clock_out(self, **evidensia):
+    def checkout(self, **evidensia):
         """Record the departure punch (FILA) for the current session."""
         return self._rejistu(Tipu.FILA, **evidensia)
 
@@ -299,8 +299,8 @@ class Prezensa(models.Model):
             )
         if tipu == Tipu.FILA and self.marka_ba(sesaun, Tipu.TAMA) is None:
             raise ValidationError(
-                _('Tenke halo clock in molok clock out.'),
-                code='no_clock_in',
+                _('Tenke halo checkin molok checkout.'),
+                code='no_checkin',
             )
         if self.sabadu and sesaun == Sesaun.LOROKRAIK:
             raise ValidationError(
@@ -340,7 +340,7 @@ class Prezensa(models.Model):
 
 class Marka(models.Model):
     """
-    One punch: the moment a teacher pressed Clock In or Clock out, with the
+    One punch: the moment a teacher pressed Check in or Check out, with the
     evidence collected at that moment.
 
     Nothing here is editable by the teacher -- the time comes from the server
