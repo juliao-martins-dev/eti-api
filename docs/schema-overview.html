@@ -395,7 +395,7 @@ erDiagram
     <ul class="notes">
       <li><strong>Unique</strong> <code>(lista, data)</code> — one row per teacher per day.</li>
       <li><code>Prezensa.objects.ba_loron(profesor, data)</code> is the only way rows are created: it opens the monthly sheet and the day row together.</li>
-      <li>Business rules live here, in <code>clock_in()</code> / <code>clock_out()</code>: no duplicate punch per session, no clock-out before clock-in, no Saturday afternoon, and the teacher must be inside the school’s 100 m radius.</li>
+      <li>Business rules live here, in <code>checkin()</code> / <code>checkout()</code>: no duplicate punch per session, no checkout before checkin, no Saturday afternoon, and the teacher must be inside the school’s 100 m radius.</li>
       <li>Session cut-off is 13:00 — a punch before it belongs to DADER, at or after to LOROKRAIK.</li>
     </ul>
   </div>
