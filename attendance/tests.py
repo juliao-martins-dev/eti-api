@@ -767,3 +767,126 @@ class KonfigTests(APITestCase):
 
     def test_requires_authentication(self):
         self.assertEqual(self.client.get('/api/konfig/').status_code, 401)
+
+
+class FotoDownloadTests(APITestCase):
+    """`GET /api/marka/{id}/foto/` -- the readable name, behind the token."""
+
+    def setUp(self):
+        # A fresh media root per test, not the shared one: punch filenames are
+        # deterministic, and the database rolls back between tests while the
+        # filesystem does not -- a leftover file would make Django append a
+        # random suffix and the assertions below would be testing the wrong
+        # thing.
+        isolamentu = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+        isolamentu.enable()
+        self.addCleanup(isolamentu.disable)
+
+        self.profesor = User.objects.create_user(
+            email='joao@eti-dili.tl', numeru_id=6, password='x',
+            naran_kompletu='João Gaio Sávio',
+        )
+        self.seluk = User.objects.create_user(
+            email='seluk@eti-dili.tl', numeru_id=7, password='x',
+            naran_kompletu='Seluk',
+        )
+        self.admin = User.objects.create_superuser(
+            email='admin@eti-dili.tl', numeru_id=1, password='x',
+            naran_kompletu='Admin',
+        )
+        self.marka = Prezensa.objects.ba_loron(
+            self.profesor, date(2026, 8, 10)
+        ).checkin(oras=time(8, 3), **evidensia())
+        self.url = f'/api/marka/{self.marka.pk}/foto/'
+
+    def test_the_file_on_disk_carries_the_readable_name(self):
+        self.assertEqual(
+            self.marka.foto.name,
+            'prezensa/2026/08/punch_6_joao-gaio-savio_checkin_2026-08-10_dader.jpg',
+        )
+
+    def test_all_four_punches_of_a_day_get_distinct_names(self):
+        """
+        A teacher checks in twice a day. Without `sesaun` in the name the
+        second one would collide and Django would append random characters.
+        """
+        prezensa = self.marka.prezensa
+        naran = {self.marka.foto.name}
+        for oras, metodu in (
+            (time(12, 1), 'checkout'),
+            (time(13, 40), 'checkin'),
+            (time(17, 35), 'checkout'),
+        ):
+            marka = getattr(prezensa, metodu)(oras=oras, **evidensia())
+            self.assertNotIn(marka.foto.name, naran)
+            naran.add(marka.foto.name)
+
+        self.assertEqual(len(naran), 4)
+        # No random suffix was needed: every name is exactly the pattern.
+        for n in naran:
+            self.assertRegex(
+                n,
+                r'^prezensa/2026/08/punch_6_joao-gaio-savio_'
+                r'(checkin|checkout)_2026-08-10_(dader|lorokraik)\.jpg$',
+            )
+
+    def test_two_teachers_with_a_similar_name_do_not_collide(self):
+        gemeu = User.objects.create_user(
+            email='gemeu@eti-dili.tl', numeru_id=99, password='x',
+            naran_kompletu='João Gaio Sávio',       # same name, different number
+        )
+        marka = Prezensa.objects.ba_loron(gemeu, date(2026, 8, 10)).checkin(
+            oras=time(8, 3), **evidensia()
+        )
+        self.assertNotEqual(marka.foto.name, self.marka.foto.name)
+        self.assertIn('punch_99_joao-gaio-savio', marka.foto.name)
+
+    def test_owner_downloads_it_under_a_readable_name(self):
+        self.client.force_authenticate(self.profesor)
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.headers['Content-Disposition'],
+            'attachment; filename='
+            '"punch_6_joao-gaio-savio_checkin_2026-08-10_dader.jpg"',
+        )
+        self.assertTrue(b''.join(response.streaming_content))
+
+    def test_the_name_separates_the_two_checkins_of_one_day(self):
+        lorokraik = self.marka.prezensa.checkin(
+            oras=time(13, 40), **evidensia()
+        )
+        self.assertNotEqual(
+            self.marka.naran_foto_download, lorokraik.naran_foto_download
+        )
+        self.assertIn('_dader.jpg', self.marka.naran_foto_download)
+        self.assertIn('_lorokraik.jpg', lorokraik.naran_foto_download)
+
+    def test_another_teacher_is_refused(self):
+        self.client.force_authenticate(self.seluk)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'la_iha_permisaun')
+
+    def test_an_admin_may_download_anyones(self):
+        self.client.force_authenticate(self.admin)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+    def test_anonymous_is_refused(self):
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_a_missing_file_is_reported_not_streamed(self):
+        self.marka.foto.storage.delete(self.marka.foto.name)
+        self.client.force_authenticate(self.profesor)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()['code'], 'foto_lakon')
+
+    def test_the_punch_payload_advertises_the_download_url(self):
+        self.client.force_authenticate(self.profesor)
+        marka = self.client.get('/api/prezensa/ohin/').json()['marka']
+        self.assertTrue(marka[0]['foto_download'].endswith(self.url))
+        self.assertEqual(
+            marka[0]['naran_foto_download'], self.marka.naran_foto_download
+        )
