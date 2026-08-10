@@ -190,7 +190,7 @@ erDiagram
         int numeru_id UK "school staff number"
         string email UK "login field"
         string naran_kompletu
-        string role "ADMIN|PROFESSOR|ESTUDANTE"
+        string role "ADMIN|PROFESSOR"
         string kargu
         image foto
     }
@@ -256,7 +256,7 @@ erDiagram
         <tr><td class="name">numeru_id</td><td class="type">PositiveIntegerField</td><td class="note"><span class="badge b-pk">unique</span> required — the number identifying the teacher on every school list. Min value 1.</td></tr>
         <tr><td class="name">email</td><td class="type">EmailField</td><td class="note"><span class="badge b-pk">unique</span> <code>USERNAME_FIELD</code> — used to log in.</td></tr>
         <tr><td class="name">naran_kompletu</td><td class="type">CharField(150)</td><td class="note">Full name (NARAN KOMPLETU). Backs <code>get_full_name()</code>.</td></tr>
-        <tr><td class="name">role</td><td class="type">CharField(20), choices</td><td class="note">ADMIN · PROFESSOR · ESTUDANTE. Defaults to PROFESSOR.</td></tr>
+        <tr><td class="name">role</td><td class="type">CharField(20), choices</td><td class="note">ADMIN · PROFESSOR. Defaults to PROFESSOR.</td></tr>
         <tr><td class="name">sexu</td><td class="type">CharField(4), choices</td><td class="note">MANE / FETO — backs the male/female totals on the school site.</td></tr>
         <tr><td class="name">kargu</td><td class="type">CharField(120)</td><td class="note">Position: Diretor, Vice Diretor I, GAT, Chefe Dep. TLP… Free text, values vary too much to enumerate.</td></tr>
         <tr><td class="name">habilitasaun_literaria</td><td class="type">CharField(120)</td><td class="note">Academic qualification.</td></tr>
