@@ -100,6 +100,7 @@ Auth is `Authorization: Bearer <access>` on everything except login/refresh/veri
 | POST | `prezensa/checkout/` | departure punch, same payload | Bearer |
 | GET | `prezensa/ohin/` | today + the state of the two buttons (`bele_checkin` / `bele_checkout`) | Bearer |
 | GET | `prezensa/istoria/` | one month or week, laid out like the paper sheet, with a summary | Bearer |
+| GET | `marka/{id}/foto/` | download a punch photo as `punch_<name>_<checkin\|checkout>_<date>_<session>.jpg` | Bearer (owner or admin) |
 | GET | `prezensa/` · `prezensa/{id}/` | own day rows | Bearer |
 | GET | `lista-prezensa/` · `{id}/` | own monthly sheets | Bearer |
 
