@@ -4,6 +4,8 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -536,3 +538,45 @@ class KonfigView(APIView):
             'eskola_raiu_metru': settings.ESKOLA_RAIU_METRU,
             'eskola_obriga_fatin': settings.ESKOLA_OBRIGA_FATIN,
         })
+
+
+class MarkaFotoView(APIView):
+    """
+    Download one punch photo under a readable name.
+
+    The file on disk carries an unguessable uuid, because MEDIA_ROOT is served
+    with no authentication -- a name built from the teacher and the date would
+    let anyone who sees one URL walk to every other teacher's selfie. This
+    route checks the token first, then hands the same bytes over as
+    `punch_juliao-martins_checkin_2026-08-10_dader.jpg`.
+
+    A teacher may fetch their own punches; an admin may fetch anyone's.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        marka = get_object_or_404(
+            Marka.objects.select_related('prezensa__lista__profesor'), pk=pk
+        )
+
+        eh_nia_rasik = marka.prezensa.lista.profesor_id == request.user.pk
+        if not (eh_nia_rasik or EhAdmin().has_permission(request, self)):
+            return Response(
+                {'detail': EhAdmin.message, 'code': 'la_iha_permisaun'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            ficheiru = marka.foto.open('rb')
+        except (FileNotFoundError, ValueError):
+            # The row survives but the file is gone -- say so plainly rather
+            # than serving a broken download.
+            return Response(
+                {'detail': 'Foto la iha iha servidor.', 'code': 'foto_lakon'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return FileResponse(
+            ficheiru, as_attachment=True, filename=marka.naran_foto_download
+        )
