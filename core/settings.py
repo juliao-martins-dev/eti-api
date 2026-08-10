@@ -171,7 +171,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-# Uploaded files: teacher photos and the clock in / clock out punch photos.
+# Uploaded files: teacher photos and the check in / check out punch photos.
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
@@ -179,7 +179,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Location evidence
 # Coordinates of ETI-Dili (Fomento II, Comoro), read on site. A punch further
 # than ESKOLA_RAIU_METRU from this point is refused: the teacher has to be at
-# the school to clock in or out.
+# the school to check in or out.
 
 ESKOLA_LATITUDE = env.float('ESKOLA_LATITUDE', default=-8.552336)
 ESKOLA_LONGITUDE = env.float('ESKOLA_LONGITUDE', default=125.541603)
