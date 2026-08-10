@@ -59,12 +59,12 @@ class PrezensaTests(TestCase):
         self.assertEqual(ListaPrezensa.objects.count(), 1)
         self.assertEqual(Prezensa.objects.count(), 1)
 
-    def test_clock_in_and_out_fill_the_session_of_the_punch(self):
+    def test_checkin_and_out_fill_the_session_of_the_punch(self):
         prezensa = self.prezensa()
-        prezensa.clock_in(oras=time(8, 3), **evidensia())
-        prezensa.clock_out(oras=time(12, 1), **evidensia())
-        prezensa.clock_in(oras=time(13, 35), **evidensia())
-        prezensa.clock_out(oras=time(17, 32), **evidensia())
+        prezensa.checkin(oras=time(8, 3), **evidensia())
+        prezensa.checkout(oras=time(12, 1), **evidensia())
+        prezensa.checkin(oras=time(13, 35), **evidensia())
+        prezensa.checkout(oras=time(17, 32), **evidensia())
 
         prezensa.refresh_from_db()
         self.assertEqual(prezensa.oras_dader_tama, time(8, 3))
@@ -75,7 +75,7 @@ class PrezensaTests(TestCase):
         self.assertEqual(prezensa.status, Prezensa.Status.PRESENT)
 
     def test_punch_keeps_photo_and_location_as_evidence(self):
-        marka = self.prezensa().clock_in(oras=time(8, 0), **evidensia(presizaun=12.5))
+        marka = self.prezensa().checkin(oras=time(8, 0), **evidensia(presizaun=12.5))
 
         self.assertEqual(marka.sesaun, Sesaun.DADER)
         self.assertEqual(marka.tipu, Tipu.TAMA)
@@ -85,21 +85,21 @@ class PrezensaTests(TestCase):
         self.assertIsNotNone(marka.rejistu_iha)
 
     def test_punch_at_the_school_is_inside_the_radius(self):
-        marka = self.prezensa().clock_in(oras=time(8, 0), **evidensia())
+        marka = self.prezensa().checkin(oras=time(8, 0), **evidensia())
         self.assertTrue(marka.iha_eskola)
         self.assertLess(marka.distansia_metru, 1)
 
     @override_settings(ESKOLA_OBRIGA_FATIN=True)
     def test_punch_far_from_the_school_is_refused(self):
         with self.assertRaises(ValidationError) as ctx:
-            self.prezensa().clock_in(oras=time(8, 0), foto=foto(), **DOOK)
+            self.prezensa().checkin(oras=time(8, 0), foto=foto(), **DOOK)
 
         self.assertEqual(ctx.exception.code, 'dook_husi_eskola')
         self.assertEqual(Marka.objects.count(), 0)
 
     def test_punch_just_inside_the_radius_is_accepted(self):
         # ~0.0007 degrees of latitude is about 78 m -- inside the 100 m radius.
-        marka = self.prezensa().clock_in(
+        marka = self.prezensa().checkin(
             oras=time(8, 0),
             foto=foto(),
             latitude='-8.551636',
@@ -110,7 +110,7 @@ class PrezensaTests(TestCase):
 
     @override_settings(ESKOLA_OBRIGA_FATIN=False)
     def test_out_of_radius_punch_is_recorded_when_enforcement_is_off(self):
-        marka = self.prezensa().clock_in(oras=time(8, 0), foto=foto(), **DOOK)
+        marka = self.prezensa().checkin(oras=time(8, 0), foto=foto(), **DOOK)
 
         self.assertFalse(marka.iha_eskola)
         self.assertGreater(marka.distansia_metru, 100)
@@ -118,31 +118,31 @@ class PrezensaTests(TestCase):
 
     @override_settings(ESKOLA_LATITUDE=None, ESKOLA_LONGITUDE=None)
     def test_unconfigured_school_never_blocks_a_punch(self):
-        marka = self.prezensa().clock_in(oras=time(8, 0), foto=foto(), **DOOK)
+        marka = self.prezensa().checkin(oras=time(8, 0), foto=foto(), **DOOK)
 
         self.assertIsNone(marka.iha_eskola)
         self.assertIsNone(marka.distansia_metru)
 
-    def test_second_clock_in_of_the_same_session_is_rejected(self):
+    def test_second_checkin_of_the_same_session_is_rejected(self):
         prezensa = self.prezensa()
-        prezensa.clock_in(oras=time(8, 3), **evidensia())
+        prezensa.checkin(oras=time(8, 3), **evidensia())
         with self.assertRaises(ValidationError) as ctx:
-            prezensa.clock_in(oras=time(9, 0), **evidensia())
+            prezensa.checkin(oras=time(9, 0), **evidensia())
         self.assertEqual(ctx.exception.code, 'duplicate')
         self.assertEqual(prezensa.marka.count(), 1)
 
-    def test_clock_out_without_clock_in_is_rejected(self):
+    def test_checkout_without_checkin_is_rejected(self):
         with self.assertRaises(ValidationError) as ctx:
-            self.prezensa().clock_out(oras=time(12, 0), **evidensia())
-        self.assertEqual(ctx.exception.code, 'no_clock_in')
+            self.prezensa().checkout(oras=time(12, 0), **evidensia())
+        self.assertEqual(ctx.exception.code, 'no_checkin')
 
     def test_saturday_has_no_afternoon_session(self):
         sabadu = self.prezensa(date(2026, 2, 21))
         self.assertTrue(sabadu.sabadu)
-        sabadu.clock_in(oras=time(8, 0), **evidensia())
-        sabadu.clock_out(oras=time(12, 0), **evidensia())
+        sabadu.checkin(oras=time(8, 0), **evidensia())
+        sabadu.checkout(oras=time(12, 0), **evidensia())
         with self.assertRaises(ValidationError) as ctx:
-            sabadu.clock_in(oras=time(14, 0), **evidensia())
+            sabadu.checkin(oras=time(14, 0), **evidensia())
         self.assertEqual(ctx.exception.code, 'no_session')
 
 
@@ -160,7 +160,7 @@ class IstoriaTests(APITestCase):
         self.client.force_authenticate(self.profesor)
 
     def marka(self, dia, oras=time(8, 3)):
-        return Prezensa.objects.ba_loron(self.profesor, dia).clock_in(
+        return Prezensa.objects.ba_loron(self.profesor, dia).checkin(
             oras=oras, **evidensia()
         )
 
@@ -233,7 +233,7 @@ class IstoriaTests(APITestCase):
             password='x',
             naran_kompletu='João Gaio',
         )
-        Prezensa.objects.ba_loron(seluk, date(2026, 2, 18)).clock_in(
+        Prezensa.objects.ba_loron(seluk, date(2026, 2, 18)).checkin(
             oras=time(8, 0), **evidensia()
         )
 
@@ -319,7 +319,7 @@ class RelatoriuOhinTests(APITestCase):
         )
 
     def test_report_lists_every_teacher_marked_or_not(self):
-        Prezensa.objects.ba_loron(self.profesor).clock_in(
+        Prezensa.objects.ba_loron(self.profesor).checkin(
             oras=time(8, 3), **evidensia()
         )
         self.client.force_authenticate(self.diretor)
@@ -396,15 +396,15 @@ class ClockApiTests(APITestCase):
         response = self.client.get('/api/prezensa/ohin/')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['profesor'], 'Martinho Martins')
-        self.assertTrue(response.json()['bele_clock_in'])
+        self.assertTrue(response.json()['bele_checkin'])
         self.assertEqual(response.json()['marka'], [])
 
-    def test_clock_in_then_clock_out(self):
+    def test_checkin_then_checkout(self):
         response = self.client.post('/api/prezensa/checkin/', evidensia())
         self.assertEqual(response.status_code, 201, response.content)
         body = response.json()
         self.assertIsNotNone(body['oras_tama'])
-        self.assertTrue(body['bele_clock_out'])
+        self.assertTrue(body['bele_checkout'])
         self.assertEqual(len(body['marka']), 1)
         self.assertTrue(body['marka'][0]['iha_eskola'])
         self.assertIn('.jpg', body['marka'][0]['foto'])
@@ -417,20 +417,20 @@ class ClockApiTests(APITestCase):
         self.assertEqual(response.status_code, 201, response.content)
         self.assertIsNotNone(response.json()['oras_fila'])
 
-    def test_clock_in_requires_a_photo(self):
+    def test_checkin_requires_a_photo(self):
         payload = evidensia()
         del payload['foto']
         response = self.client.post('/api/prezensa/checkin/', payload)
         self.assertEqual(response.status_code, 400)
         self.assertIn('foto', response.json())
 
-    def test_clock_in_requires_coordinates(self):
+    def test_checkin_requires_coordinates(self):
         response = self.client.post('/api/prezensa/checkin/', {'foto': foto()})
         self.assertEqual(response.status_code, 400)
         self.assertIn('latitude', response.json())
         self.assertIn('longitude', response.json())
 
-    def test_clock_in_accepts_the_full_precision_a_phone_reports(self):
+    def test_checkin_accepts_the_full_precision_a_phone_reports(self):
         response = self.client.post(
             '/api/prezensa/checkin/',
             {
@@ -446,7 +446,7 @@ class ClockApiTests(APITestCase):
         self.assertEqual(str(marka.latitude), '-8.552336')
         self.assertEqual(str(marka.longitude), '125.541603')
 
-    def test_clock_in_rounds_rather_than_truncates(self):
+    def test_checkin_rounds_rather_than_truncates(self):
         response = self.client.post(
             '/api/prezensa/checkin/',
             {'foto': foto(), 'latitude': '-8.5523369', 'longitude': '125.5416031'},
@@ -454,7 +454,7 @@ class ClockApiTests(APITestCase):
         self.assertEqual(response.status_code, 201, response.content)
         self.assertEqual(str(Marka.objects.get().latitude), '-8.552337')
 
-    def test_clock_in_rejects_a_coordinate_with_too_many_whole_digits(self):
+    def test_checkin_rejects_a_coordinate_with_too_many_whole_digits(self):
         response = self.client.post(
             '/api/prezensa/checkin/',
             {'foto': foto(), 'latitude': '1234.5', 'longitude': '125.541603'},
@@ -462,7 +462,7 @@ class ClockApiTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('latitude', response.json())
 
-    def test_clock_in_rejects_impossible_coordinates(self):
+    def test_checkin_rejects_impossible_coordinates(self):
         response = self.client.post(
             '/api/prezensa/checkin/',
             {'foto': foto(), 'latitude': '95.000000', 'longitude': '125.545100'},
@@ -500,12 +500,12 @@ class ClockApiTests(APITestCase):
             response.json()['marka_foun']['kolumna'], 'ORAS_LOROKRAIK_TAMA'
         )
 
-    def test_clock_out_of_a_session_never_opened_is_rejected(self):
+    def test_checkout_of_a_session_never_opened_is_rejected(self):
         response = self.client.post(
             '/api/prezensa/checkout/', evidensia(sesaun=Sesaun.LOROKRAIK)
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()['code'], 'no_clock_in')
+        self.assertEqual(response.json()['code'], 'no_checkin')
 
     def test_unknown_sesaun_is_rejected(self):
         response = self.client.post(
@@ -548,7 +548,7 @@ class HotuTests(APITestCase):
             email='benedito@eti-dili.tl', numeru_id=8, password='x',
             naran_kompletu='Benedito Soares',
         )
-        Prezensa.objects.ba_loron(self.martinho, date(2026, 2, 18)).clock_in(
+        Prezensa.objects.ba_loron(self.martinho, date(2026, 2, 18)).checkin(
             oras=time(8, 3), **evidensia()
         )
         self.client.force_authenticate(self.diretor)
@@ -682,7 +682,7 @@ class StatusTests(APITestCase):
         self.assertEqual(response.json()['code'], 'invalid_profesor')
 
     def test_a_punched_day_blocks_the_whole_range(self):
-        Prezensa.objects.ba_loron(self.profesor, date(2026, 2, 6)).clock_in(
+        Prezensa.objects.ba_loron(self.profesor, date(2026, 2, 6)).checkin(
             oras=time(8, 0), **evidensia()
         )
 
@@ -715,7 +715,7 @@ class StatusTests(APITestCase):
         )
 
     def test_delete_refuses_a_punched_day(self):
-        Prezensa.objects.ba_loron(self.profesor, date(2026, 2, 6)).clock_in(
+        Prezensa.objects.ba_loron(self.profesor, date(2026, 2, 6)).checkin(
             oras=time(8, 0), **evidensia()
         )
         response = self.client.delete(
