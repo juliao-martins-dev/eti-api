@@ -1,26 +1,60 @@
 from calendar import monthrange
 from datetime import date, time
+from pathlib import PurePath
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.utils import timezone
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
-from accounts.models import naran_foto_uniku
+from accounts.models import EXTENSAUN_FOTO
 
 from .geo import distansia_husi_eskola, iha_eskola
 
 
 def foto_marka(instance, filename):
     """
-    Punch evidence -- `upload_to` for `Marka.foto`. Kept in the same
-    year/month folders as before, with a name that is never reused so an old
-    URL can never come back pointing at somebody else's punch.
+    Punch evidence -- `upload_to` for `Marka.foto`:
+
+        prezensa/2026/08/punch_6_martinho-martins_checkin_2026-08-10_dader.jpg
+                         punch_{numeru_id}_{naran}_{checkin|checkout}_{data}_{sesaun}
+
+    The name is deliberately readable so the folder can be filed and audited by
+    hand. Three details make it work:
+
+    * `numeru_id` leads, so two teachers who slugify to the same name never
+      clash, and the folder sorts by staff number.
+    * `naran_kompletu` is slugified -- accents and spaces would otherwise be
+      percent-encoded in every URL ("João Gaio" -> `joao-gaio`).
+    * `sesaun` closes the day: a teacher checks in twice a day, morning and
+      afternoon, so name + direction + date alone is **not** unique. Without it
+      Django would append random characters to the second one and the tidy
+      naming would break exactly where it matters.
+
+    The unique constraint on (prezensa, sesaun, tipu) means one punch can ever
+    own this name, so nothing is overwritten and no name is recycled.
+
+    Trade-off, recorded on purpose: MEDIA_ROOT is served without
+    authentication, so a readable path is also a guessable one. Serve
+    MEDIA_ROOT privately in production and let clients fetch photos through
+    `GET /api/marka/{id}/foto/`, which checks the token first.
     """
     dia = getattr(instance.prezensa, 'data', None) or data_ohin()
-    return naran_foto_uniku(f'prezensa/{dia:%Y/%m}', filename)
+    profesor = instance.prezensa.lista.profesor
+    tipu = 'checkin' if instance.tipu == Tipu.TAMA else 'checkout'
+    naran = slugify(profesor.naran_kompletu) or 'profesor'
+
+    sufiksu = PurePath(filename).suffix.lower()
+    if sufiksu not in EXTENSAUN_FOTO:
+        sufiksu = '.jpg'
+
+    return (
+        f'prezensa/{dia:%Y/%m}/punch_{profesor.numeru_id}_{naran}'
+        f'_{tipu}_{dia:%Y-%m-%d}_{instance.sesaun.lower()}{sufiksu}'
+    )
 
 
 class Fulan(models.IntegerChoices):
@@ -408,6 +442,24 @@ class Marka(models.Model):
     def oras_orariu(self):
         """The scheduled time printed in that column's header."""
         return getattr(Prezensa, self.kolumna)
+
+    @property
+    def naran_foto_download(self):
+        """
+        The filename `GET /api/marka/{id}/foto/` offers when saving.
+
+        Since the stored name is already readable this is simply its basename,
+        computed rather than read from disk so a photo uploaded under the older
+        uuid scheme still downloads under a sensible name.
+        """
+        tipu = 'checkin' if self.tipu == Tipu.TAMA else 'checkout'
+        profesor = self.prezensa.lista.profesor
+        naran = slugify(profesor.naran_kompletu) or 'profesor'
+        sufiksu = PurePath(self.foto.name).suffix.lower() or '.jpg'
+        return (
+            f'punch_{profesor.numeru_id}_{naran}_{tipu}'
+            f'_{self.prezensa.data:%Y-%m-%d}_{self.sesaun.lower()}{sufiksu}'
+        )
 
     @property
     def atrazadu(self):
