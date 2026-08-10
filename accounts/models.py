@@ -1,7 +1,34 @@
+import uuid
+from pathlib import PurePath
+
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+
+#: Extensions Pillow has already validated by the time we get here. Anything
+#: else becomes .jpg rather than trusting a name that came from a client.
+EXTENSAUN_FOTO = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'}
+
+
+def naran_foto_uniku(prefiksu, filename):
+    """
+    A name no upload will ever be given twice.
+
+    Both clients send the same filename every time ("foto.jpg", "punch.jpg"),
+    and Django frees a name as soon as the previous file is deleted -- so names
+    were being recycled. A URL a browser had cached could then 404, or worse,
+    resolve to a *different* teacher's photo. A uuid ends that for good.
+    """
+    sufiksu = PurePath(filename).suffix.lower()
+    if sufiksu not in EXTENSAUN_FOTO:
+        sufiksu = '.jpg'
+    return f'{prefiksu}/{uuid.uuid4().hex}{sufiksu}'
+
+
+def foto_perfil(instance, filename):
+    """Profile photo -- `upload_to` for `User.foto`."""
+    return naran_foto_uniku('fotos', filename)
 
 
 class UserManager(BaseUserManager):
@@ -115,7 +142,7 @@ class User(AbstractUser):
     nu_kontaktu = models.CharField(_('nu. kontaktu'), max_length=20, blank=True)
 
     # FOTO
-    foto = models.ImageField(_('foto'), upload_to='fotos/', blank=True, null=True)
+    foto = models.ImageField(_('foto'), upload_to=foto_perfil, blank=True, null=True)
 
     # NIVEL EDUKASAUN
     nivel_edukasaun = models.CharField(
