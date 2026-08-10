@@ -3,8 +3,11 @@
 Complete context for an AI coding agent. Everything here was read from source.
 Anything not verifiable in code is marked **UNVERIFIED**.
 
-Workspace root: `c:\workplace\eti-dili\` — two sibling projects, `eti-api/`
-(backend) and `eti-mobile/` (Expo app). Paths below are relative to that root.
+Workspace root: `c:\workplace\eti-dili\` — **three** sibling git repositories:
+`eti-api/` (backend), `eti-dashboard/` (Next.js admin web) and `eti-mobile/`
+(Expo app). Paths below are relative to that root.
+
+Last verified against the code: **2026-08-10** — 100 backend tests passing.
 
 ---
 
@@ -75,75 +78,92 @@ App identity (`eti-mobile/app.json`): name **ETI PRESENSA**, slug
 `com.juliao125.EtiPresenca`, new architecture enabled, typed routes + React
 Compiler experiments on.
 
-### Admin dashboard
+### Admin dashboard — `eti-dashboard/package.json`
 
-**There is no separate admin dashboard project.** Django admin is mounted at
-`/admin/` (`eti-api/core/urls.py`), but `eti-api/accounts/admin.py` and
-`eti-api/attendance/admin.py` are untouched stubs — **no models are
-registered**, so the admin shows only Groups/Users-from-auth defaults. See
-§10.
+| Package | Version |
+| --- | --- |
+| next | 16.3.0 |
+| react / react-dom | 19.2.8 |
+| tailwindcss | ^4 |
+| typescript | ^5 |
+| exceljs | ^4.4.0 |
+| jspdf / jspdf-autotable | ^4.2.1 / ^5.0.8 |
+| react-easy-crop | ^6.2.3 |
+| react-loader-spinner | ^8.0.2 |
+
+A Next.js 16 app (App Router, client components) with **six routes** and no
+server-side data layer — every screen talks to `eti-api` over JWT. Exports are
+generated in the browser, so the numbers on screen and in the file cannot
+disagree.
+
+**Django's own admin is a different thing and stays empty:** `/admin/` is
+mounted, but `accounts/admin.py` and `attendance/admin.py` are untouched stubs,
+so it lists only `Group` and the two simplejwt blacklist models. The
+`eti-dashboard` app is what administrators actually use. See §10.
 
 ---
 
 ## 3. Repository Structure
 
 ```
-eti-dili/
-├─ eti-api/                     Django REST backend (not a git repo)
-│  ├─ core/                     project config
-│  │  ├─ settings.py            env-driven settings, JWT, geofence constants
-│  │  ├─ urls.py                root URLconf: /admin/, /api/auth/, /api/
-│  │  ├─ wsgi.py / asgi.py      deploy entry points
-│  ├─ accounts/                 identity app
-│  │  ├─ models.py              User (AUTH_USER_MODEL) + UserManager
-│  │  ├─ serializers.py         UserSerializer, LoginSerializer, FotoSerializer
-│  │  ├─ views.py               LoginView, LogoutView, MeView
-│  │  ├─ urls.py                /api/auth/* routes
-│  │  ├─ permissions.py         EhAdmin
-│  │  ├─ tests.py               13 tests (auth flow, photo PATCH)
-│  │  └─ migrations/            0001_initial, 0002_user_numeru_id
-│  ├─ attendance/               the attendance book
-│  │  ├─ models.py              ListaPrezensa, Prezensa, Marka + calendar helpers
-│  │  ├─ serializers.py         punch input/output, istoria, daily report
-│  │  ├─ views.py               PrezensaViewSet, ListaPrezensaViewSet
-│  │  ├─ urls.py                DRF DefaultRouter
-│  │  ├─ geo.py                 haversine distance + school geofence
-│  │  ├─ tests.py               38 tests
-│  │  └─ migrations/            0001_initial, 0002_…_marka
-│  ├─ docs/
-│  │  ├─ plan.md                this file
-│  │  └─ schema-overview.html   standalone ER diagram + model cards
-│  ├─ plan.md                   older "System Flow" narrative (superseded here)
-│  ├─ manage.py
-│  ├─ requirements.txt
-│  └─ .env                      secrets — never read values into docs
+eti-dili/                          three independent git repositories
 │
-└─ eti-mobile/                  Expo / React Native app (git repo)
-   ├─ app/                      expo-router file routes
-   │  ├─ _layout.tsx            root stack
-   │  ├─ index.tsx              boot/redirect gate
-   │  ├─ (auth)/index.tsx       login screen
-   │  ├─ (eti)/_layout.tsx      bottom tab navigator
-   │  ├─ (eti)/index.tsx        home "Veranda" — clock buttons
-   │  ├─ (eti)/history.tsx      "Istoria" — monthly attendance
-   │  ├─ (eti)/notification.tsx "Notifikasaun" — mock data
-   │  ├─ (eti)/profile.tsx      "Perfil" — profile + photo upload
-   │  ├─ clock.tsx              camera + punch flow
-   │  └─ announcement.tsx       announcements — mock data
-   ├─ components/               AttendanceCard, IstoriaDayCard, IstoriaSummary,
-   │                            FulanPicker, LoadingBar, NotificationCard,
-   │                            EmptyNotification
-   ├─ lib/                      no-UI layer
-   │  ├─ config.ts              API base URL + endpoint constants
-   │  ├─ api.ts                 axios instance, JWT interceptors, refresh
-   │  ├─ auth.ts                login/logout/me/photo upload
-   │  ├─ storage.ts             SecureStore session persistence
-   │  ├─ prezensa.ts            punch submission + local today cache
-   │  ├─ istoria.ts             monthly history fetch + view models
-   │  └─ location.ts            GPS permission + fix
-   ├─ assets/images/
-   ├─ app.json / eas.json / tsconfig.json / eslint.config.js
-   └─ package.json
+├─ eti-api/                        Django REST backend  (68 commits)
+│  ├─ core/                        settings (env-driven), URLconf, WSGI/ASGI
+│  ├─ accounts/                    identity
+│  │  ├─ models.py                 User (AUTH_USER_MODEL) + UserManager
+│  │  │                            + foto_perfil / naran_foto_uniku upload paths
+│  │  ├─ serializers.py            login, profile, photo, roster CRUD, reset-password
+│  │  ├─ views.py                  LoginView, LogoutView, MeView, ProfesorViewSet
+│  │  ├─ permissions.py            EhAdmin (is_staff or role=ADMIN)
+│  │  ├─ urls.py                   /api/auth/* + the /api/profesor/ router
+│  │  ├─ tests.py                  40 tests · tests_helpers.py  shared punch fixture
+│  │  └─ migrations/               0001_initial · 0002_numeru_id
+│  │                               0003_alter_user_role · 0004_alter_user_foto
+│  ├─ attendance/                  the attendance book
+│  │  ├─ models.py                 ListaPrezensa · Prezensa · Marka
+│  │  │                            + calendar helpers, punch rules, foto_marka
+│  │  ├─ serializers.py            punch in/out, istoria, reports, status writes
+│  │  ├─ views.py                  PrezensaViewSet · ListaPrezensaViewSet · KonfigView
+│  │  ├─ geo.py                    haversine distance + school geofence
+│  │  ├─ tests.py                  60 tests
+│  │  └─ migrations/               0001_initial · 0002_marka
+│  │                               0003_rename_estadu_status · 0004_alter_marka_foto
+│  ├─ docs/                        plan.md (this) · integrate-api.md · sql-query.md
+│  │                               schema-overview.html · flow.png
+│  │                               plan-delete-profesor.md · plan-reset-password.md
+│  ├─ README.md                    public front page: what it does + REST reference
+│  ├─ plan.md                      System Flow narrative (request lifecycle)
+│  └─ .env                         secrets — never read values into docs
+│
+├─ eti-dashboard/                  Next.js 16 admin web  (163 commits)
+│  ├─ app/
+│  │  ├─ login/page.tsx            email + password
+│  │  └─ (dashboard)/
+│  │     ├─ layout.tsx             shell, session guard, profile refresh
+│  │     ├─ page.tsx               Painel — today, whole school
+│  │     ├─ profesor/page.tsx      roster CRUD, reset password, delete
+│  │     ├─ prezensa/page.tsx      the grid + Rejistu Lisensa
+│  │     ├─ relatoriu/page.tsx     summaries + Excel/PDF export
+│  │     └─ konfig/page.tsx        schedule + geofence, read from /api/konfig/
+│  ├─ components/                  Sidebar, Topbar, modals (Detalle, Evidensia,
+│  │                               KortaFoto), ui/ primitives
+│  └─ lib/                         api.ts (JWT, single-flight refresh, host swap)
+│                                  auth.ts · store.ts · prezensa.ts · relatoriu.ts
+│                                  periodu.ts · export-*.ts · korta-foto.ts
+│
+└─ eti-mobile/                     Expo / React Native  (62 commits)
+   ├─ app/                         expo-router
+   │  ├─ (auth)/index.tsx          login
+   │  ├─ (eti)/index.tsx           Veranda — the two buttons
+   │  ├─ (eti)/history.tsx         Istoria — monthly sheet
+   │  ├─ (eti)/notification.tsx    Notifikasaun — mock data [WIP]
+   │  ├─ (eti)/profile.tsx         Perfil + photo upload
+   │  ├─ clock.tsx                 camera + GPS punch flow
+   │  └─ announcement.tsx          hardcoded items [WIP]
+   ├─ components/                  AttendanceCard, Istoria*, FulanPicker, …
+   └─ lib/                         api.ts · auth.ts · storage.ts (SecureStore)
+                                   prezensa.ts · istoria.ts · location.ts · config.ts
 ```
 
 ---
@@ -154,50 +174,75 @@ eti-dili/
 
 | Feature | Source |
 | --- | --- |
-| Custom user, email login, teacher fields from the school roster | `eti-api/accounts/models.py` |
+| Custom user, email login, teacher fields from the school roster | `accounts/models.py` |
 | Required unique staff number `numeru_id` | `accounts/models.py` |
+| Unique (uuid) filename per uploaded photo, so a URL is never recycled | `accounts/models.py` `naran_foto_uniku` |
 | JWT login returning tokens **plus** the profile in one response | `accounts/serializers.py` |
 | Logout via refresh-token blacklist | `accounts/views.py` |
 | Refresh with rotation + blacklist-after-rotation | `core/settings.py` |
-| `GET /api/auth/me/`, `PATCH` photo only | `accounts/views.py` |
+| `GET /api/auth/me/`; `PATCH` replaces the photo only, deleting the old file | `accounts/views.py`, `serializers.py` |
+| Roster of **teachers and admins**, deactivated included | `accounts/views.py` `ProfesorViewSet` |
+| Create a teacher → one-time `password_inisial` | `accounts/views.py` |
+| Soft (de)activation via `PATCH {is_active}` | `accounts/views.py` |
+| Irreversible delete behind the admin's own password, cascading to sheets/days/punches **and photo files** | `accounts/views.py` `destroy` |
+| Admin-set password reset (two matching fields) that revokes the teacher's sessions | `accounts/views.py` `reset_password` |
+| `eh_admin` / `rasik` guards on both destructive roster actions | `accounts/views.py` `_eh_admin` |
 | Auto-opening monthly sheet + day row on first punch | `attendance/models.py` `PrezensaManager.ba_loron` |
-| Clock in / clock out with photo + GPS evidence | `attendance/models.py` `_rejistu` |
+| Check in / check out with photo + GPS evidence | `attendance/models.py` `checkin` / `checkout` / `_rejistu` |
 | Session auto-detection at the 13:00 cut-off; `sesaun` override | `attendance/models.py`, `serializers.py` |
-| Rules: no duplicate per session, no out-before-in, no Saturday afternoon | `attendance/models.py` |
-| Geofence: refuse punches >100 m from school, with distance in the error | `attendance/models.py`, `geo.py` |
+| Rules: no duplicate per session, no checkout before checkin, no Saturday afternoon | `attendance/models.py` |
+| Geofence: refuse punches >100 m from school, distance in the error | `attendance/models.py`, `geo.py` |
 | Geofence kill-switch `ESKOLA_OBRIGA_FATIN` | `core/settings.py` |
-| Late detection (`atrazadu`) vs scheduled column time | `attendance/models.py` `Marka.atrazadu` |
-| Today's state for the home screen (`ohin`) with button flags | `attendance/views.py`, `serializers.py` |
-| Monthly/weekly history with every working day and a summary | `attendance/views.py` `istoria` |
-| School-wide daily report incl. teachers who have not punched | `attendance/views.py` `ohin_hotu` |
-| Monthly sheets list/retrieve | `attendance/views.py` `ListaPrezensaViewSet` |
-| GPS precision tolerance — server rounds instead of rejecting | `attendance/serializers.py` `KoordenadaField` |
-| 51 automated tests, all passing | `accounts/tests.py`, `attendance/tests.py` |
+| Late detection (`atrazadu`) vs the scheduled column time | `attendance/models.py` `Marka.atrazadu` |
+| Today's state + the two button flags (`bele_checkin` / `bele_checkout`) | `attendance/serializers.py` |
+| Monthly/weekly history in the paper-sheet layout, `?profesor=` for admins | `attendance/views.py` `istoria` |
+| School-wide daily report incl. who has not punched | `attendance/views.py` `ohin_hotu` |
+| Any period × any/all staff, `?marka=false` light mode | `attendance/views.py` `hotu` |
+| Hand-written LEAVE/MISSION/HOLIDAY/ABSENT over a range, atomic, refusing punched days | `attendance/views.py` `status` |
+| Schedule + geofence settings exposed, without the coordinates | `attendance/views.py` `KonfigView` |
+| GPS precision tolerance — the server rounds instead of rejecting | `attendance/serializers.py` `KoordenadaField` |
+| **100 automated tests**, all passing (40 accounts + 60 attendance) | `*/tests.py` |
+
+### Admin dashboard — implemented
+
+| Feature | Source |
+| --- | --- |
+| Email login, admin-only (`role != ADMIN` is signed straight back out) | `app/login/page.tsx`, `app/(dashboard)/layout.tsx` |
+| JWT in localStorage, single-flight rotating refresh, retry-once on 401 | `lib/api.ts` |
+| Runtime host swap between the school's two LAN addresses | `lib/api.ts`, `components/ApiFallback.tsx` |
+| Pre-paint session guard, cached profile refreshed once per load | `lib/auth.ts` `SESAUN_BOOT`, `(dashboard)/layout.tsx` |
+| Painel — stat cards, "seidauk marka" list, newest-punch feed | `app/(dashboard)/page.tsx` |
+| Prezensa grid — day/week/month, per-teacher, evidence modal | `app/(dashboard)/prezensa/page.tsx` |
+| Rejistu Lisensa — write a status over a range, `iha_marka` conflicts surfaced | `app/(dashboard)/prezensa/page.tsx` |
+| Profesór roster — create (one-time password card), edit, (de)activate | `app/(dashboard)/profesor/page.tsx` |
+| Reset password (two matching fields) and delete (password + Tetun warning) | `app/(dashboard)/profesor/page.tsx` |
+| Relatóriu — per-teacher summary, four stat cards, week/month/year | `app/(dashboard)/relatoriu/page.tsx`, `lib/relatoriu.ts` |
+| Excel + PDF export generated in the browser | `lib/export-excel.ts`, `lib/export-pdf.ts` |
+| Konfig panel reading the real schedule/geofence from the API | `app/(dashboard)/konfig/page.tsx` |
+| Own profile photo upload with a cropper | `components/KortaFotoModal.tsx`, `lib/korta-foto.ts` |
+| Light/dark + accent theme in localStorage | `lib/theme.ts` |
 
 ### Mobile — implemented
 
 | Feature | Source |
 | --- | --- |
-| Login screen + session persistence in SecureStore | `app/(auth)/index.tsx`, `lib/storage.ts` |
-| Auto token refresh, single-flight, replay-once on 401 | `lib/api.ts` |
-| Forced logout + redirect when refresh fails | `lib/api.ts` `forceLogin` |
+| Login + session persistence in SecureStore | `app/(auth)/index.tsx`, `lib/storage.ts` |
+| Single-flight token refresh, replay-once on 401, forced logout | `lib/api.ts` |
 | Bottom tabs: Veranda / Istoria / Notifikasaun / Perfil | `app/(eti)/_layout.tsx` |
-| Home with clock in/out entry | `app/(eti)/index.tsx` |
-| Camera punch flow with GPS capture | `app/clock.tsx`, `lib/location.ts` |
+| Camera punch flow with GPS capture and Tetun permission prompts | `app/clock.tsx`, `lib/location.ts`, `app.json` |
 | Monthly + weekly history UI, month picker, summary, day cards | `app/(eti)/history.tsx`, `components/Istoria*` |
 | Profile view + photo replacement | `app/(eti)/profile.tsx`, `lib/auth.ts` |
-| Tetun permission prompts for camera/location/gallery | `app/app.json` |
 
 ### Unfinished
 
 | Feature | Status |
 | --- | --- |
-| Notifications tab | **[WIP]** renders `notificationsMock` hardcoded in `app/(eti)/notification.tsx`; no API |
-| Announcements screen | **[WIP]** hardcoded `announcementItems` in `app/announcement.tsx`; no API |
-| Django admin for reviewing punches/photos | **[WIP]** no models registered (`*/admin.py` are stubs) |
-| Admin/director UI for `ohin-hotu` | **[WIP]** endpoint exists; no client consumes it |
-| Today's state from the server | **[WIP]** `/api/prezensa/ohin/` exists but mobile caches locally instead (`lib/prezensa.ts`) |
-| Monthly PDF export of the sheet | Not started |
+| Mobile Notifikasaun tab | **[WIP]** `notificationsMock` hardcoded; no API exists |
+| Mobile Announcements screen | **[WIP]** hardcoded `announcementItems`; no API exists |
+| Django admin for reviewing punches/photos | **[WIP]** no project models registered — the dashboard covers this instead |
+| Mobile "today" from the server | **[WIP]** `/api/prezensa/ohin/` exists; the app still caches locally (§10 #3) |
+| Self-service password change | Not started — no route for anyone to change their own password |
+| Monthly PDF of the sheet from the API | Not started (the dashboard exports client-side) |
 | Scheduled `flushexpiredtokens` | Not scheduled on any host |
 
 ---
@@ -297,7 +342,7 @@ One row of the grid: one teacher, one day. **Stores no times.**
 - Derived properties rebuild the printed grid: `loron` (weekday in Tetun),
   `sabadu`, `oras_dader_tama`, `oras_dader_fila`, `oras_lorokraik_tama`,
   `oras_lorokraik_fila`.
-- Holds the business rules: `clock_in()`, `clock_out()`, `_rejistu()`,
+- Holds the business rules: `checkin()`, `checkout()`, `_rejistu()`,
   `sesaun_ba()`; constants `ORAS_*` (08:00/12:00/13:30/17:30) and
   `LIMITE_SESAUN = 13:00`.
 
@@ -334,8 +379,9 @@ and `BlacklistedToken` (1:1 to OutstandingToken). Plus Django defaults
 
 ## 6. API Endpoints
 
-Read from `eti-api/core/urls.py`, `accounts/urls.py`, `attendance/urls.py`
-(DRF `DefaultRouter`), and the corresponding views/serializers.
+Read from the live URL map (`core/urls.py`, `accounts/urls.py`,
+`attendance/urls.py` via DRF routers) — **21 routes**, all verified against a
+running server.
 
 Global default: `IsAuthenticated` on everything
 (`REST_FRAMEWORK.DEFAULT_PERMISSION_CLASSES`, `core/settings.py`).
@@ -351,7 +397,7 @@ All paths **require the trailing slash**.
 | PATCH | `/api/auth/me/` | Replace profile photo | Yes | multipart `foto` (required) → full profile. Other fields ignored. `PUT` → 405 |
 | GET | `/api/prezensa/` | List own day rows | Yes | → `PrezensaSerializer[]` scoped to `request.user` |
 | GET | `/api/prezensa/{id}/` | One day row | Yes | → `PrezensaSerializer` |
-| GET | `/api/prezensa/ohin/` | Today + button state (creates row) | Yes | → day (`status`, `status_display`, …) + `sesaun`, `oras_tama`, `oras_fila`, `bele_clock_in`, `bele_clock_out`, `marka[]` |
+| GET | `/api/prezensa/ohin/` | Today + button state (creates row) | Yes | → day (`status`, `status_display`, …) + `sesaun`, `oras_tama`, `oras_fila`, `bele_checkin`, `bele_checkout`, `marka[]` |
 | GET | `/api/prezensa/istoria/` | One month (or week) of a sheet, paper-layout | Yes | `?fulan&tinan&semana` → `{profesor, kargu, fulan, fulan_display, tinan, semana, rezumu{...}, loron[]}`; `?profesor=<id>` (admin only) opens another teacher's sheet; 400 `invalid_period` |
 | GET | `/api/prezensa/ohin-hotu/` | Today for **all** teachers | Yes + **EhAdmin** | → `{data, loron, rezumu{total, marka_ona, seidauk_marka}, profesor[]}`; 403 otherwise |
 | POST | `/api/prezensa/checkin/` | Arrival punch | Yes | multipart `foto`,`latitude`,`longitude`,`presizaun?`,`sesaun?` → 201 day + `marka_foun` |
@@ -376,7 +422,7 @@ All paths **require the trailing slash**.
 | code | Meaning | Extra |
 | --- | --- | --- |
 | `duplicate` | Already punched this session | `oras` |
-| `no_clock_in` | Clock-out before clock-in | — |
+| `no_checkin` | Checkout before checkin | — |
 | `no_session` | Saturday afternoon | — |
 | `dook_husi_eskola` | Beyond the geofence radius | `distansia` (m) |
 | `invalid_period` | Bad `fulan`/`tinan`/`semana` | — |
@@ -430,21 +476,39 @@ Config: `eti-api/core/settings.py` (`SIMPLE_JWT`, `REST_FRAMEWORK`).
 | `/api/auth/login|refresh|verify/` | Public |
 | Everything else under `/api/` | `IsAuthenticated` (global default) |
 | `/api/prezensa/ohin-hotu/`, `hotu/`, `status/`, all of `/api/profesor/` | `IsAuthenticated` + `EhAdmin` (`accounts/permissions.py`: `is_staff` **or** `role == ADMIN`) |
+| `/api/prezensa/istoria/?profesor=` | `EhAdmin` for somebody else's sheet; without the param it is your own |
 | `/api/profesor/{id}/` DELETE and `reset-password/` | additionally refuse an ADMIN target (`eh_admin`) and the caller's own account (`rasik`) |
 | All other attendance routes | Scoped by queryset to `request.user` — a teacher cannot read another's data even by guessing an id |
-| `/admin/` | Django session auth, staff only |
+| `/admin/` | Django session auth, staff only. No project models registered |
 
-### Client side — `eti-mobile/lib/`
+### Client side
+
+Both clients implement the same discipline — single-flight refresh, retry once
+on 401, then force re-login — and differ only in where they keep the tokens.
+
+**`eti-mobile/lib/`**
 
 - Tokens and cached profile in **expo-secure-store** (`storage.ts`):
   `access_token`, `refresh_token`, `user_profile`; legacy `auth_token` cleared.
-- `api.ts`: request interceptor attaches the Bearer token and mints one
-  pre-emptively if absent; response interceptor refreshes once on 401, replays
-  the request, else `forceLogin()`. Refresh is **single-flight**.
+- `api.ts`: the request interceptor attaches the Bearer token and mints one
+  pre-emptively if absent; the response interceptor refreshes once on 401,
+  replays, else `forceLogin()`.
 - `PUBLIC_PATHS` (login/refresh/verify) never carry a token and are never
   retried.
-- Multipart: `Content-Type` is set to `false` so React Native can attach its own
+- Multipart: `Content-Type` is set to `false` so React Native attaches its own
   boundary — documented at length in `lib/api.ts`.
+
+**`eti-dashboard/lib/`**
+
+- Tokens in **localStorage** (`eti.access`, `eti.refresh`) plus a cached
+  profile (`eti.perfil`), so the sidebar paints before `/auth/me/` answers.
+  The layout re-fetches the profile once per document load, or a replaced photo
+  URL would stay stale.
+- `SESAUN_BOOT` runs before paint: a visitor without a token never sees a frame.
+- `apiBase()` resolves a runtime override → `NEXT_PUBLIC_API_URL` → port 8000 of
+  the serving host, so one build works on both school LANs; a failed connection
+  raises `API_SEM_LIGASAUN` and the shell offers the other host.
+- A non-ADMIN session is signed out on sight — every admin route would 403.
 
 ---
 
@@ -488,8 +552,9 @@ Comments explain **why**, not what — e.g. why `kargu` is denormalized, why
 
 ### Testing
 
-- Django `TestCase`/`APITestCase`, no pytest. 51 tests total (13 accounts,
-  38 attendance).
+- Django `TestCase`/`APITestCase`, no pytest. **100 tests** (40 accounts,
+  60 attendance). Run with `--noinput` so a leftover test database from an
+  interrupted run does not stop at a prompt.
 - Media isolated per test class via `override_settings(MEDIA_ROOT=tempfile…)`.
 - Time-sensitive API tests **pin the clock** by patching
   `attendance.models.timezone` and `attendance.serializers.timezone`
@@ -497,7 +562,11 @@ Comments explain **why**, not what — e.g. why `kargu` is denormalized, why
   spuriously.
 - Geofence tests pin `ESKOLA_OBRIGA_FATIN=True` with `override_settings`
   because the local `.env` disables it.
-- No frontend tests exist. **[WIP]**
+- Probes against the real database run inside `transaction.atomic()` with
+  `set_rollback(True)`, and with `override_settings(MEDIA_ROOT=tempfile…)` when
+  they write files — production rows and photos are never touched.
+- No frontend tests exist in either client; `tsc --noEmit` and `lint` are the
+  only gates. **[WIP]**
 
 ---
 
@@ -508,91 +577,113 @@ Comments explain **why**, not what — e.g. why `kargu` is denormalized, why
 ```bash
 pip install -r requirements.txt
 python manage.py migrate
-python manage.py createsuperuser      # prompts email, numeru_id, naran_kompletu
-python manage.py runserver 0.0.0.0:8000   # 0.0.0.0 so a phone on the LAN can reach it
-python manage.py test                 # 51 tests
-python manage.py flushexpiredtokens   # housekeeping, run weekly
+python manage.py createsuperuser        # prompts email, numeru_id, naran_kompletu
+python manage.py runserver 0.0.0.0:8000 # 0.0.0.0 so phones on the LAN can reach it
+python manage.py test --noinput         # 100 tests, ~7 min
+python manage.py flushexpiredtokens     # housekeeping, weekly
 ```
 
-Required `.env` keys at `eti-api/.env` (**names only**):
+`.env` keys at `eti-api/.env` (**names only**):
 
 | Variable | Purpose |
 | --- | --- |
-| `SECRET_KEY` | Django signing key |
-| `DEBUG` | Debug flag |
-| `ALLOWED_HOSTS` | Comma-separated hosts |
-| `DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection |
-| `ESKOLA_LATITUDE`, `ESKOLA_LONGITUDE` | School coordinates (defaults `-8.552336, 125.541603`) |
+| `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS` | Django basics |
+| `DB_ENGINE`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL |
+| `ESKOLA_LATITUDE`, `ESKOLA_LONGITUDE` | School position (defaults `-8.552336, 125.541603`) |
 | `ESKOLA_RAIU_METRU` | Geofence radius (default 100.0) |
 | `ESKOLA_OBRIGA_FATIN` | Enforce the geofence (default True) |
 
-`.env` is loaded by `environ.Env.read_env(BASE_DIR / '.env')` in
-`core/settings.py` — it must run before any `env()` call.
+Loaded by `environ.Env.read_env(BASE_DIR / '.env')` in `core/settings.py`,
+which must run before any `env()` call. A template lives in `.env.example`.
+
+### Admin dashboard — from `eti-dashboard/`
+
+```bash
+npm install
+npm run dev            # http://localhost:3000
+npm run build && npm start
+npm run lint
+npx tsc --noEmit       # no test suite yet
+```
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | API base **including** `/api`, no trailing slash. Unset, the app assumes port 8000 of whatever host serves it |
 
 ### Mobile — from `eti-mobile/`
 
 ```bash
 npm install
-npx expo start          # or: npm run android | npm run ios | npm run web
+npx expo start         # or: npm run android | npm run ios | npm run web
 npm run lint
+npx tsc --noEmit
 ```
 
 | Variable | Purpose |
 | --- | --- |
 | `EXPO_PUBLIC_API_URL` | Backend base URL; falls back to a hardcoded LAN IP in `lib/config.ts` |
 
-Device and server must be on the same network; the fallback address in
-`lib/config.ts` is a development LAN IP and will not work elsewhere.
+Device and server must share a network.
 
-### Pre-production checklist (from `eti-api/plan.md`)
+### Backup
 
-`DEBUG=False` · real `ALLOWED_HOSTS` · web server serving `MEDIA_ROOT` (the
-`/media/` route is DEBUG-only) · TLS · rotate `SECRET_KEY` off the
-`django-insecure-` default · remove `ESKOLA_OBRIGA_FATIN=False`.
+`pg_dump` is not on PATH; it lives at `C:\Program Files\PostgreSQL8in`.
+The exact, tested command and its restore are in
+**[sql-query.md §7](sql-query.md)**. Remember the database alone is not a
+complete backup — `MEDIA_ROOT` holds the photos the rows point at.
+
+### Pre-production checklist
+
+`DEBUG=False` · real `SECRET_KEY` and `ALLOWED_HOSTS` · TLS ·
+`ESKOLA_OBRIGA_FATIN=True` · the web server serving `MEDIA_ROOT` (the `/media/`
+route is DEBUG-only) · `flushexpiredtokens` on a weekly schedule.
 
 ---
 
 ## 10. Known Issues / TODOs
 
-No `TODO`/`FIXME` comments exist in either codebase. The following were found by
-reading the code.
+No `TODO`/`FIXME` comments exist in any of the three codebases. Everything
+below was found by reading the code on **2026-08-10**.
 
-### Contract drift between mobile and backend
+### Open — mobile ⇄ backend drift
 
 | # | Issue | Location |
 | --- | --- | --- |
-| 1 | `PREZENSA_ENDPOINTS.istoriaOhin` points at `/api/prezensa/istoria-ohin/`, which **no longer exists** (renamed to `istoria/`). Dead constant; a 404 if used. | `eti-mobile/lib/config.ts` |
-| 2 | The punch form sends a `periodu` field the backend does not accept or read; the server derives the column itself. Harmless but misleading. | `eti-mobile/lib/prezensa.ts` |
-| 3 | Comment claims "there is no read endpoint for today's record yet" and caches punches in SecureStore. `/api/prezensa/ohin/` **does** exist and is authoritative; the local cache can drift from the server. | `eti-mobile/lib/prezensa.ts` |
-| 4 | Client session split uses **13:30** as the morning/afternoon boundary; the backend uses **13:00** (`LIMITE_SESAUN`). A punch between 13:00 and 13:30 is filed by the server in the afternoon while the app labels it morning. | `eti-mobile/lib/prezensa.ts` vs `eti-api/attendance/models.py` |
-| 5 | The app does not handle the backend's error `code`s — only generic messages. In particular `duplicate` is shown as a failure although the punch **was** recorded, so a dropped response makes recorded attendance look failed. | `eti-mobile/lib/api.ts` `apiErrorMessage` |
-| 6 | `presizaun` (GPS accuracy) is never sent, so the field is always null. | `eti-mobile/lib/prezensa.ts` |
+| 1 | **Session boundary disagrees.** The app splits morning/afternoon at **13:30**; the server uses **13:00** (`LIMITE_SESAUN`). A punch between the two is filed by the server in the afternoon while the app labels it morning. Fix: read `limite_sesaun` from `GET /api/konfig/` instead of hardcoding. | `eti-mobile/lib/prezensa.ts:40` |
+| 2 | `PREZENSA_ENDPOINTS.istoriaOhin` still points at `/api/prezensa/istoria-ohin/`, which no longer exists. Dead constant; a 404 if ever used. | `eti-mobile/lib/config.ts:47` |
+| 3 | "Today" is cached in SecureStore instead of read from `/api/prezensa/ohin/`, which exists and is authoritative. The cache can drift from the server. | `eti-mobile/lib/prezensa.ts` |
+| 4 | The punch form sends a `periodu` field the API neither accepts nor reads — the server derives the column. Harmless but misleading. | `eti-mobile/lib/prezensa.ts:51` |
+| 5 | Error `code`s are not handled — only generic messages. In particular **`duplicate` should be treated as success**: the punch *was* recorded, so a dropped response shows a false failure. | `eti-mobile/lib/api.ts` |
+| 6 | `presizaun` (GPS accuracy) is never sent, so the column is always null. | `eti-mobile/lib/prezensa.ts` |
+| 7 | Notifikasaun and Announcements are hardcoded mock data; no API exists for either. | `app/(eti)/notification.tsx`, `app/announcement.tsx` |
 
-### Backend
+### Open — backend / operations
 
 | # | Issue |
 | --- | --- |
-| 7 | **No models registered in Django admin** — `accounts/admin.py`, `attendance/admin.py` are stubs. There is no way for an administrator to review punches, photos or flagged locations. |
-| 8 | `ESKOLA_OBRIGA_FATIN=False` is currently set in `eti-api/.env` for testing — the geofence is **disabled**; punches from anywhere are accepted. |
-| 9 | `SECRET_KEY` in `.env` still carries the `django-insecure-` development prefix, and `ALLOWED_HOSTS=*`. |
-| 10 | No upload size or dimension limit on `foto` (profile or punch); a modern phone sends 3–8 MB per punch, ~4 punches/day/teacher. |
-| 11 | `eti-api` is **not a git repository** (no `.git`), so backend history is untracked. `eti-mobile` is. |
+| 8 | **No project models in Django admin** — the stubs are empty. Acceptable now that `eti-dashboard` covers review, but there is no fallback if the dashboard is down. |
+| 9 | `ESKOLA_OBRIGA_FATIN=False` is set in `eti-api/.env` for testing — **the geofence is currently disabled**; punches from anywhere are accepted. Must be `True` before real use. |
+| 10 | `SECRET_KEY` still carries the `django-insecure-` prefix and `ALLOWED_HOSTS=*`. |
+| 11 | No size or dimension limit on uploads. A phone sends 3–8 MB per punch, ~4 punches/day/teacher, and nothing downscales them. |
 | 12 | Blacklist tables grow ~1 row per refresh; `flushexpiredtokens` is not scheduled anywhere. |
 | 13 | Logout cannot revoke an already-issued access token (≤15 min window) — inherent to stateless JWT, not a defect. |
-| 14 | ~~Admins missing from reports~~ **Resolved:** `ohin-hotu`, `hotu` and `istoria?profesor=` cover `role in (PROFESSOR, ADMIN)` via `profesores_relatoriu()` (`attendance/views.py`) — the director keeps a sheet like everyone else. |
-| 15 | Django's `TIME_ZONE` is `Asia/Dili`; the home screen mock in the original design showed "WIB" (UTC+7). **UNVERIFIED** whether any client formats times in a non-Dili zone. |
-| 16 | ~~`estadu` values never set~~ **Resolved:** `POST /api/prezensa/status/` (admin) writes ABSENT/LEAVE/MISSION/HOLIDAY over a range. |
-| 17 | ~~`obs` never written~~ **Resolved:** written by the same endpoint. |
-| 21 | **2026-08-07:** the roster (`GET /api/profesor/`) now lists ADMIN accounts as well as PROFESSOR, matching the reports. Because admins are no longer hidden, DELETE and reset-password carry an explicit `eh_admin` guard — previously an admin was safe only by being invisible. |
-| 22 | **2026-08-07:** `POST /api/profesor/{id}/reset-password/` added. No self-service password change exists for anyone, and no password is e-mailed — both the initial and the reset are handed over in person. |
-| 20 | **2026-08-06 rename:** `Prezensa.estadu` → `status`, values PREZENTE/FALTA/LISENSA/MISAUN/FERIADU → PRESENT/ABSENT/LEAVE/MISSION/HOLIDAY, endpoint `/api/prezensa/estadu/` → `/api/prezensa/status/`; migration `attendance/0003` maps existing rows. **Both clients must rename** the field, the payload key and the URL; `status_display` keeps the Tetun label. |
+| 14 | **No self-service password change** for anyone: a teacher asks an admin, and an admin cannot change their own from the roster (`rasik`). Both go through `manage.py`. |
+| 15 | No frontend tests in either client; `tsc --noEmit` and `lint` are the only gates. |
+| 16 | Two virtualenvs (`eti-dili/env/`, `eti-api/venv/`). **UNVERIFIED** which is canonical; the running interpreter resolves to `eti-dili/env/`. |
+| 17 | `eti-api/plan.md` (System Flow) overlaps this document. Kept because it explains the request lifecycle in prose; keep both in sync or fold one in. |
 
-### Environment
+### Resolved — kept as a record of decisions
 
-| # | Issue |
+| Date | Change |
 | --- | --- |
-| 18 | Two virtualenvs (`eti-dili/env/`, `eti-api/venv/`). **UNVERIFIED** which is intended. |
-| 19 | `eti-api/plan.md` (older System Flow narrative) overlaps this document; keep them in sync or fold one into the other. |
+| 2026-08-06 | `Prezensa.estadu` → `status`, values → English (`PRESENT`/`ABSENT`/`LEAVE`/`MISSION`/`HOLIDAY`), endpoint `/prezensa/estadu/` → `/prezensa/status/`. Migration `attendance/0003` maps existing rows; `status_display` keeps the Tetun label. |
+| 2026-08-06 | Admins now appear in every report (`profesores_relatoriu`), so the director keeps a sheet like everyone else. |
+| 2026-08-07 | The roster lists ADMIN accounts too. Because they are no longer hidden by the queryset, DELETE and reset-password gained an explicit `eh_admin` guard. |
+| 2026-08-07 | `DELETE /api/profesor/{id}/` (admin password required) and `POST /api/profesor/{id}/reset-password/` added. |
+| 2026-08-08 | `ESTUDANTE` removed from `User.Role` (migration `accounts/0003`). |
+| 2026-08-09 | **Photo filenames are now uuids** (`accounts/0004`, `attendance/0004`). Clients always upload the same name and replacing a photo deletes the old file, which freed the name for the next upload — a cached URL could 404 or resolve to a *different* teacher's photo. |
+| 2026-08-09 | The dashboard refreshes its cached profile once per load, so a replaced photo URL cannot stay stale. |
+| 2026-08-10 | `Prezensa.clock_in()` / `clock_out()` → **`checkin()` / `checkout()`**; API fields `bele_clock_in`/`bele_clock_out` → `bele_checkin`/`bele_checkout`; error code `no_clock_in` → `no_checkin`. URLs were already `/checkin/` and `/checkout/`. No schema change. |
 
 ---
 
