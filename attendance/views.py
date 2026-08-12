@@ -40,17 +40,43 @@ from .serializers import (
 )
 
 
-def profesores_relatoriu():
+def profesores_rejistu():
     """
-    Everyone who appears on attendance reports: teaching staff AND the
-    administration -- the director signs the book like everyone else, so
-    ADMIN accounts keep a sheet too. Students never appear.
+    Everyone who keeps an attendance sheet at all: teaching staff AND the
+    administration -- the director signs the book like everyone else, so ADMIN
+    accounts keep a sheet too. Students never do.
+
+    Deactivated accounts are included, because their past months are still
+    part of the record: a teacher who left in March did attend in February.
     """
     User = get_user_model()
     return (
         User.objects
-        .filter(role__in=[User.Role.PROFESSOR, User.Role.ADMIN], is_active=True)
+        .filter(role__in=[User.Role.PROFESSOR, User.Role.ADMIN])
         .order_by('naran_kompletu')
+    )
+
+
+def profesores_relatoriu():
+    """
+    Who a report *lists*: `profesores_rejistu()` minus the people who have
+    left. A former teacher should not turn up as an absence on today's sheet.
+    """
+    return profesores_rejistu().filter(is_active=True)
+
+
+def prezensa_kompletu():
+    """
+    Prezensa rows with everything the serializers reach for already loaded.
+
+    `lista__profesor` matters as much as the prefetch: `PrezensaSerializer`
+    reads `lista.profesor` for its `profesor` field, so without it every row
+    of a report costs its own query.
+    """
+    return (
+        Prezensa.objects
+        .select_related('lista', 'lista__profesor')
+        .prefetch_related('marka')
     )
 
 
@@ -68,17 +94,17 @@ class PrezensaViewSet(mixins.ListModelMixin,
 
     def get_queryset(self):
         return (
-            Prezensa.objects
+            prezensa_kompletu()
             .filter(lista__profesor=self.request.user)
-            .select_related('lista', 'lista__profesor')
-            .prefetch_related('marka')
         )
 
     @action(detail=False, methods=['get'])
     def ohin(self, request):
         """Today's row, created on first access."""
         prezensa = Prezensa.objects.ba_loron(request.user)
-        serializer = PrezensaOhinSerializer(prezensa, context={'request': request})
+        serializer = PrezensaOhinSerializer(
+            prezensa, context=self.get_serializer_context()
+        )
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='istoria')
@@ -111,8 +137,10 @@ class PrezensaViewSet(mixins.ListModelMixin,
                     {'detail': EhAdmin.message},
                     status=status.HTTP_403_FORBIDDEN,
                 )
+            # Looked up among the people who keep a sheet, not among all
+            # accounts: a bare pk lookup happily returned a student's month.
             try:
-                alvo = get_user_model().objects.get(pk=int(profesor_param))
+                alvo = profesores_rejistu().get(pk=int(profesor_param))
             except (TypeError, ValueError, get_user_model().DoesNotExist):
                 return Response(
                     {'detail': 'Profesór la eziste.', 'code': 'invalid_profesor'},
@@ -124,14 +152,12 @@ class PrezensaViewSet(mixins.ListModelMixin,
         prezensa_fulan = {
             prezensa.data: prezensa
             for prezensa in (
-                Prezensa.objects
+                prezensa_kompletu()
                 .filter(
                     lista__profesor=alvo,
                     data__year=tinan,
                     data__month=fulan,
                 )
-                .select_related('lista', 'lista__profesor')
-                .prefetch_related('marka')
             )
         }
 
@@ -189,24 +215,27 @@ class PrezensaViewSet(mixins.ListModelMixin,
         )
 
     def _loron(self, data, prezensa, profesor, request):
-        """One row of the sheet -- an empty one when nothing was marked."""
+        """
+        One row of the sheet -- an empty one when nothing was marked.
+
+        The empty row is built from `PrezensaSerializer`'s own field list, so a
+        field added to the serializer appears here too. Spelled out by hand it
+        matched only until the next change, and a client reading a month would
+        have found the key on marked days and missing on the others.
+        """
         if prezensa is not None:
-            linha = PrezensaSerializer(prezensa, context={'request': request}).data
+            linha = PrezensaSerializer(
+                prezensa, context=self.get_serializer_context()
+            ).data
         else:
-            linha = {
-                'id': None,
+            linha = dict.fromkeys(PrezensaSerializer.Meta.fields)
+            linha.update({
                 'profesor': profesor.naran_kompletu,
                 'data': data,
                 'loron': LORON[data.weekday()],
-                'oras_dader_tama': None,
-                'oras_dader_fila': None,
-                'oras_lorokraik_tama': None,
-                'oras_lorokraik_fila': None,
-                'status': None,
-                'status_display': None,
                 'obs': '',
                 'marka': [],
-            }
+            })
         linha['semana'] = semana_husi(data)
         linha['sabadu'] = data.weekday() == 5
         return linha
@@ -230,10 +259,8 @@ class PrezensaViewSet(mixins.ListModelMixin,
         prezensa_ohin = {
             prezensa.lista.profesor_id: prezensa
             for prezensa in (
-                Prezensa.objects
+                prezensa_kompletu()
                 .filter(data=data, lista__profesor__in=profesores)
-                .select_related('lista')
-                .prefetch_related('marka')
             )
         }
 
@@ -259,7 +286,7 @@ class PrezensaViewSet(mixins.ListModelMixin,
                 'seidauk_marka': len(liña) - marka_ona,
             },
             'profesor': PrezensaProfesorSerializer(
-                liña, many=True, context={'request': request}
+                liña, many=True, context=self.get_serializer_context()
             ).data,
         })
 
@@ -287,21 +314,24 @@ class PrezensaViewSet(mixins.ListModelMixin,
         profesores = profesores_relatoriu()
         profesor_param = request.query_params.get('profesor')
         if profesor_param:
+            # `istoria` answers 400 for an id that matches nobody; this used to
+            # filter silently and return an empty report instead, so the same
+            # bad id told the dashboard two different stories -- one of them
+            # indistinguishable from "this teacher was never absent".
             try:
-                profesores = profesores.filter(pk=int(profesor_param))
-            except (TypeError, ValueError):
+                alvo = profesores_rejistu().get(pk=int(profesor_param))
+            except (TypeError, ValueError, get_user_model().DoesNotExist):
                 return Response(
-                    {'detail': 'profesor: presiza numeru.', 'code': 'invalid_profesor'},
+                    {'detail': 'Profesór la eziste.', 'code': 'invalid_profesor'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+            profesores = profesores_rejistu().filter(pk=alvo.pk)
 
         prezensa_mapa = {
             (prezensa.lista.profesor_id, prezensa.data): prezensa
             for prezensa in (
-                Prezensa.objects
+                prezensa_kompletu()
                 .filter(data__in=loron_lista, lista__profesor__in=profesores)
-                .select_related('lista')
-                .prefetch_related('marka')
             )
         }
 
@@ -324,7 +354,7 @@ class PrezensaViewSet(mixins.ListModelMixin,
         return Response({
             **periodu,
             'profesor': serializer_class(
-                linha, many=True, context={'request': request}
+                linha, many=True, context=self.get_serializer_context()
             ).data,
         })
 
@@ -438,12 +468,11 @@ class PrezensaViewSet(mixins.ListModelMixin,
         payload.is_valid(raise_exception=True)
 
         prezensa = (
-            Prezensa.objects
+            prezensa_kompletu()
             .filter(
                 lista__profesor_id=payload.validated_data['profesor'],
                 data=payload.validated_data['data'],
             )
-            .prefetch_related('marka')
             .first()
         )
         if prezensa is None:
@@ -497,9 +526,10 @@ class PrezensaViewSet(mixins.ListModelMixin,
             erru.update(getattr(exc, 'params', None) or {})
             return Response(erru, status=status.HTTP_400_BAD_REQUEST)
 
-        data = PrezensaOhinSerializer(prezensa, context={'request': request}).data
+        kontestu = self.get_serializer_context()
+        data = PrezensaOhinSerializer(prezensa, context=kontestu).data
         # The punch just made, so the app does not have to find it in `marka`.
-        data['marka_foun'] = MarkaSerializer(marka, context={'request': request}).data
+        data['marka_foun'] = MarkaSerializer(marka, context=kontestu).data
         return Response(data, status=status.HTTP_201_CREATED)
 
 
@@ -554,13 +584,14 @@ class KonfigView(APIView):
 
 class MarkaFotoView(APIView):
     """
-    Download one punch photo under a readable name.
+    Download one punch photo, with the token checked first.
 
-    The file on disk carries an unguessable uuid, because MEDIA_ROOT is served
-    with no authentication -- a name built from the teacher and the date would
-    let anyone who sees one URL walk to every other teacher's selfie. This
-    route checks the token first, then hands the same bytes over as
-    `punch_juliao-martins_checkin_2026-08-10_dader.jpg`.
+    The stored name is readable by design --
+    `punch_6_martinho-martins_checkin_2026-08-10_dader.jpg` -- so the evidence
+    folder can be filed and audited by hand. That makes the names guessable,
+    which is exactly why **MEDIA_ROOT must not be served publicly in
+    production**: anyone who saw one URL could otherwise walk to every other
+    teacher's photo. This route is the authenticated way in.
 
     A teacher may fetch their own punches; an admin may fetch anyone's.
     """
