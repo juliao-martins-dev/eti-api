@@ -285,6 +285,71 @@ class ProfesorApiTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['code'], 'duplicate_email')
 
+    def test_an_admin_cannot_deactivate_their_own_account(self):
+        """
+        DELETE and reset-password both refuse `rasik`; PATCH did not, and it
+        reached the same place by another door: the account switched off, and
+        the very next request -- including the login that would undo it --
+        rejected. Recovery meant manage.py on the server.
+        """
+        response = self.client.patch(
+            f'/api/profesor/{self.admin.pk}/', {'is_active': False}, format='json',
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()['code'], 'rasik')
+
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_active)
+
+    def test_an_admin_cannot_deactivate_another_admin(self):
+        kolega = User.objects.create_superuser(
+            email='diretora@eti-dili.tl', password=SENHA_ADMIN, numeru_id=2,
+            naran_kompletu='Ana Pereira', kargu='Vice Diretora',
+        )
+        response = self.client.patch(
+            f'/api/profesor/{kolega.pk}/', {'is_active': False}, format='json',
+        )
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response.json()['code'], 'eh_admin')
+
+        kolega.refresh_from_db()
+        self.assertTrue(kolega.is_active)
+
+    def test_an_admin_may_still_edit_themselves_and_reactivate_anyone(self):
+        """The guard is about switching an account off, not about editing."""
+        rasik = self.client.patch(
+            f'/api/profesor/{self.admin.pk}/',
+            {'kargu': 'Diretor Jerál', 'is_active': True},
+            format='json',
+        )
+        self.assertEqual(rasik.status_code, 200, rasik.content)
+        self.assertEqual(rasik.json()['kargu'], 'Diretor Jerál')
+
+        volta = self.client.patch(
+            f'/api/profesor/{self.inativu.pk}/', {'is_active': True}, format='json',
+        )
+        self.assertEqual(volta.status_code, 200, volta.content)
+        self.inativu.refresh_from_db()
+        self.assertTrue(self.inativu.is_active)
+
+    def test_an_email_differing_only_in_case_is_a_duplicate(self):
+        """
+        normalize_email only lowercases the domain, and the unique index is
+        case-sensitive, so MARTINHO@ and martinho@ used to become two accounts
+        -- of which only one could ever log in, since login matches exactly.
+        """
+        response = self.client.post(
+            '/api/profesor/',
+            {
+                'numeru_id': 44,
+                'naran_kompletu': 'Martinho Duplo',
+                'email': 'MARTINHO@eti-dili.tl',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()['code'], 'duplicate_email')
+
     def test_patch_updates_and_deactivates(self):
         response = self.client.patch(
             f'/api/profesor/{self.profesor.pk}/',
