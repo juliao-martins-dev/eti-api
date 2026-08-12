@@ -286,6 +286,45 @@ class IstoriaTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()['code'], 'invalid_profesor')
 
+    def test_only_accounts_that_keep_a_sheet_can_be_asked_for(self):
+        """
+        The lookup used to be a bare pk against every account, so a role the
+        book has no column for -- a student -- came back with a month of empty
+        working days as though they were staff.
+        """
+        diretor = User.objects.create_superuser(
+            email='joao@eti-dili.tl', numeru_id=1, password='x',
+            naran_kompletu='João Gaio',
+        )
+        estudante = User.objects.create_user(
+            email='estudante@eti-dili.tl', numeru_id=900, password='x',
+            naran_kompletu='Estudante Ida', role='ESTUDANTE',
+        )
+        self.client.force_authenticate(diretor)
+
+        response = self.istoria(fulan=2, tinan=2026, profesor=estudante.pk)
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()['code'], 'invalid_profesor')
+
+    def test_a_teacher_who_left_still_has_a_readable_history(self):
+        """
+        `profesores_rejistu` keeps deactivated accounts on purpose: February
+        happened whether or not they were still on the staff in August.
+        """
+        self.marka(date(2026, 2, 18))
+        self.profesor.is_active = False
+        self.profesor.save(update_fields=['is_active'])
+
+        diretor = User.objects.create_superuser(
+            email='joao@eti-dili.tl', numeru_id=1, password='x',
+            naran_kompletu='João Gaio',
+        )
+        self.client.force_authenticate(diretor)
+
+        response = self.istoria(fulan=2, tinan=2026, profesor=self.profesor.pk)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['profesor'], 'Martinho Martins')
+
     def test_istoria_requires_authentication(self):
         self.client.force_authenticate(None)
         self.assertEqual(self.istoria().status_code, 401)
@@ -398,6 +437,35 @@ class ClockApiTests(APITestCase):
         self.assertEqual(response.json()['profesor'], 'Martinho Martins')
         self.assertTrue(response.json()['bele_checkin'])
         self.assertEqual(response.json()['marka'], [])
+
+    def test_the_payload_describes_one_session_even_across_the_cut_off(self):
+        """
+        `sesaun` and the four fields derived from it must agree.
+
+        Each used to read the clock for itself -- six readings to build one
+        response -- so a payload assembled as the clock crossed LIMITE_SESAUN
+        announced the morning in `sesaun` while answering the buttons for the
+        afternoon. With a morning check in already recorded the two stories
+        differ visibly: the morning cannot be checked into again, the
+        afternoon has not been touched.
+        """
+        self.assertEqual(
+            self.client.post('/api/prezensa/checkin/', evidensia()).status_code, 201
+        )
+
+        antes = timezone.make_aware(datetime(2026, 2, 18, 12, 59, 59))
+        depois = timezone.make_aware(datetime(2026, 2, 18, 13, 0, 1))
+
+        with mock.patch('attendance.serializers.timezone') as relojiu:
+            # Only the first reading lands before the cut-off. Anything that
+            # reads the clock a second time gets the afternoon.
+            relojiu.localtime.side_effect = [antes] + [depois] * 10
+            corpo = self.client.get('/api/prezensa/ohin/').json()
+
+        self.assertEqual(relojiu.localtime.call_count, 1)
+        self.assertEqual(corpo['sesaun'], Sesaun.DADER)
+        self.assertFalse(corpo['bele_checkin'])
+        self.assertTrue(corpo['bele_checkout'])
 
     def test_checkin_then_checkout(self):
         response = self.client.post('/api/prezensa/checkin/', evidensia())
@@ -623,6 +691,30 @@ class HotuTests(APITestCase):
         self.client.force_authenticate(self.martinho)
         response = self.client.get('/api/prezensa/hotu/?fulan=2&tinan=2026')
         self.assertEqual(response.status_code, 403)
+
+    def test_an_unknown_profesor_is_rejected_not_answered_empty(self):
+        """
+        `istoria` says 400 for an id matching nobody. `hotu` used to filter
+        silently and answer 200 with no rows -- which on a report screen reads
+        as "this teacher was never absent", the one conclusion it must never
+        invent.
+        """
+        response = self.client.get(
+            '/api/prezensa/hotu/?data=2026-02-18&profesor=987654'
+        )
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(response.json()['code'], 'invalid_profesor')
+
+    def test_the_report_does_not_query_once_per_row(self):
+        """
+        `PrezensaSerializer.profesor` reads `lista.profesor`, which was not
+        select_related here: every row of the report cost its own query, and
+        the cost grew with the school.
+        """
+        with self.assertNumQueries(3):
+            response = self.client.get('/api/prezensa/hotu/?data=2026-02-18')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(len(response.json()['profesor']), 3)
 
 
 @MEDIA_TEMP
