@@ -884,9 +884,24 @@ class FotoDownloadTests(APITestCase):
         self.assertEqual(response.json()['code'], 'foto_lakon')
 
     def test_the_punch_payload_advertises_the_download_url(self):
+        """
+        `ohin` returns *today*, so this needs a punch made today -- the one in
+        setUp is pinned to a fixed date for the filename assertions, and using
+        it here passed only on the day the test was written.
+
+        08:03 keeps it in the morning session, which is valid on every day of
+        the week; only Saturday *afternoon* is refused.
+        """
+        ohin = Prezensa.objects.ba_loron(self.profesor)
+        marka_ohin = ohin.checkin(oras=time(8, 3), **evidensia())
+
         self.client.force_authenticate(self.profesor)
         marka = self.client.get('/api/prezensa/ohin/').json()['marka']
-        self.assertTrue(marka[0]['foto_download'].endswith(self.url))
+
+        self.assertEqual(len(marka), 1)
+        self.assertTrue(
+            marka[0]['foto_download'].endswith(f'/api/marka/{marka_ohin.pk}/foto/')
+        )
         self.assertEqual(
-            marka[0]['naran_foto_download'], self.marka.naran_foto_download
+            marka[0]['naran_foto_download'], marka_ohin.naran_foto_download
         )
