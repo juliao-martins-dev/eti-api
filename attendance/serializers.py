@@ -40,9 +40,12 @@ class MarkaSerializer(serializers.ModelSerializer):
     kolumna = serializers.CharField(read_only=True)
     oras_orariu = serializers.TimeField(read_only=True)
     atrazadu = serializers.BooleanField(read_only=True)
-    # `foto` is the raw file (uuid name, no auth). `foto_download` goes through
-    # the API, which checks the token and renames it to something a human can
-    # file: punch_juliao-martins_checkin_2026-08-10_dader.jpg
+    # `foto` is the raw MEDIA_URL path, served by no auth check at all --
+    # which is exactly why MEDIA_ROOT must not be public in production, the
+    # stored names being readable and therefore guessable:
+    #     punch_6_martinho-martins_checkin_2026-08-10_dader.jpg
+    # `foto_download` is the same image through the API, which checks the
+    # token first and offers the name above when saving.
     foto_download = serializers.SerializerMethodField()
     naran_foto_download = serializers.CharField(read_only=True)
 
@@ -132,7 +135,22 @@ class PrezensaOhinSerializer(PrezensaSerializer):
         read_only_fields = fields
 
     def _sesaun(self, obj):
-        return Prezensa.sesaun_ba(timezone.localtime().time())
+        """
+        Which half of the day it is *now* -- read from the clock once and kept.
+
+        The five fields below all describe one session, and each used to derive
+        it separately: six readings of the clock to build one payload. A
+        response assembled as the clock crosses LIMITE_SESAUN would then
+        announce `sesaun: DADER` while `bele_checkin` and the rest had already
+        been answered for the afternoon.
+
+        Caching on the serializer is right even for `many=True`, where DRF
+        reuses one child instance: the session comes from the clock, not from
+        the row, so every row in a response belongs to the same one.
+        """
+        if not hasattr(self, '_sesaun_kacheadu'):
+            self._sesaun_kacheadu = Prezensa.sesaun_ba(timezone.localtime().time())
+        return self._sesaun_kacheadu
 
     def get_sesaun(self, obj):
         return self._sesaun(obj)
@@ -212,6 +230,12 @@ class PrezensaProfesorLoronSerializer(PrezensaProfesorSerializer):
 
 
 class PrezensaProfesorLoronLigeruSerializer(PrezensaProfesorLoronSerializer):
+    """
+    The same dated report line with the punches left out, for
+    `/api/prezensa/hotu/?marka=false` -- a month of days across every teacher
+    is a lot of evidence photos to send to a screen that only draws the grid.
+    """
+
     prezensa = PrezensaLigeruSerializer(read_only=True, allow_null=True)
 
 
