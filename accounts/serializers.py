@@ -8,6 +8,9 @@ class UserSerializer(serializers.ModelSerializer):
     """The profile the app shows in its header after login."""
 
     role_display = serializers.CharField(source='get_role_display', read_only=True)
+    nivel_edukasaun_display = serializers.CharField(
+        source='get_nivel_edukasaun_display', read_only=True
+    )
 
     class Meta:
         model = User
@@ -20,6 +23,10 @@ class UserSerializer(serializers.ModelSerializer):
             'foto',
             'role',
             'role_display',
+            'nivel_edukasaun',
+            'nivel_edukasaun_display',
+            'area_estudu',
+            'disiplina_hanorin',
         ]
         read_only_fields = fields
 
@@ -32,6 +39,9 @@ class ProfesorRosterSerializer(serializers.ModelSerializer):
     """
 
     role_display = serializers.CharField(source='get_role_display', read_only=True)
+    nivel_edukasaun_display = serializers.CharField(
+        source='get_nivel_edukasaun_display', read_only=True
+    )
 
     class Meta:
         model = User
@@ -47,6 +57,13 @@ class ProfesorRosterSerializer(serializers.ModelSerializer):
             'sexu',
             'nu_kontaktu',
             'is_active',
+            # HABILITASAUN LITERÁRIA on the printed roster is a heading over
+            # these two columns, not a column of its own -- so the pair is what
+            # the dashboard shows.
+            'nivel_edukasaun',
+            'nivel_edukasaun_display',
+            'area_estudu',
+            'disiplina_hanorin',
         ]
         read_only_fields = fields
 
@@ -56,7 +73,10 @@ class ProfesorKriaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['numeru_id', 'naran_kompletu', 'email', 'kargu', 'nu_kontaktu', 'sexu']
+        fields = [
+            'numeru_id', 'naran_kompletu', 'email', 'kargu', 'nu_kontaktu', 'sexu',
+            'nivel_edukasaun', 'area_estudu', 'disiplina_hanorin',
+        ]
 
 
 class ProfesorAtualizaSerializer(serializers.ModelSerializer):
@@ -72,6 +92,9 @@ class ProfesorAtualizaSerializer(serializers.ModelSerializer):
             'nu_kontaktu',
             'sexu',
             'is_active',
+            'nivel_edukasaun',
+            'area_estudu',
+            'disiplina_hanorin',
         ]
 
 
@@ -89,6 +112,34 @@ class ProfesorResetPasswordSerializer(serializers.Serializer):
         if attrs['password_foun'] != attrs['password_konfirma']:
             raise serializers.ValidationError(
                 {'detail': 'Password rua la hanesan.', 'code': 'password_la_hanesan'}
+            )
+        return attrs
+
+
+class TrokaPasswordSerializer(serializers.Serializer):
+    """
+    POST /api/auth/troka-password/ -- the signed-in account changes its own
+    password.
+
+    Unlike the admin reset, this one demands the **old** password: the caller
+    is changing their own credentials, and an unlocked laptop must not be
+    enough to lock the real owner out.
+    """
+
+    password_tuan = serializers.CharField(write_only=True, trim_whitespace=False)
+    password_foun = serializers.CharField(write_only=True, trim_whitespace=False)
+    password_konfirma = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        if attrs['password_foun'] != attrs['password_konfirma']:
+            raise serializers.ValidationError(
+                {'detail': 'Password foun rua la hanesan.',
+                 'code': 'password_la_hanesan'}
+            )
+        if attrs['password_foun'] == attrs['password_tuan']:
+            raise serializers.ValidationError(
+                {'detail': "Password foun tenke la hanesan ho password tuan.",
+                 'code': 'password_hanesan_tuan'}
             )
         return attrs
 
