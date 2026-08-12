@@ -31,6 +31,7 @@ from .serializers import (
     ProfesorKriaSerializer,
     ProfesorResetPasswordSerializer,
     ProfesorRosterSerializer,
+    TrokaPasswordSerializer,
     UserSerializer,
 )
 
@@ -383,3 +384,94 @@ def _hasai_fotos(fotos):
             storage.delete(name)
         except OSError as exc:
             logger.warning('la bele hasai foto %s: %s', name, exc)
+
+
+class TrokaPasswordView(APIView):
+    """
+    Change your own password -- teacher or admin, whoever is signed in.
+
+    This is the counterpart to `ProfesorViewSet.reset_password`, and the two
+    differ on purpose:
+
+    * the admin reset does **not** ask for the old password, because an admin
+      resetting a teacher who forgot theirs cannot possibly know it;
+    * this one **does**, because the caller is changing their own credentials
+      and a borrowed, unlocked browser must not be enough to take an account.
+
+    It is also the only route by which an ADMIN can change a password at all --
+    the roster refuses `rasik` and `eh_admin` on both of its password actions.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = TrokaPasswordSerializer
+
+    def post(self, request):
+        payload = TrokaPasswordSerializer(data=request.data)
+        if not payload.is_valid():
+            erru = payload.errors
+            for kodigu in ('password_la_hanesan', 'password_hanesan_tuan'):
+                if kodigu in str(erru):
+                    detalle = (
+                        'Password foun rua la hanesan.'
+                        if kodigu == 'password_la_hanesan'
+                        else 'Password foun tenke la hanesan ho password tuan.'
+                    )
+                    return Response(
+                        {'detail': detalle, 'code': kodigu},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            return Response(
+                {
+                    'detail': 'Presiza hatama password tuan no password foun dala rua.',
+                    'code': 'password_presiza',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        dadus = payload.validated_data
+        user = request.user
+
+        if not user.check_password(dadus['password_tuan']):
+            return Response(
+                {'detail': 'Password tuan sala.', 'code': 'password_tuan_sala'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            validate_password(dadus['password_foun'], user=user)
+        except DjangoValidationError as exc:
+            return Response(
+                {
+                    'detail': ' '.join(exc.messages),
+                    'code': 'password_fraku',
+                    'erros': exc.messages,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(dadus['password_foun'])
+        user.save(update_fields=['password'])
+
+        # Every *other* session is revoked -- a password change is how someone
+        # reacts to a device going missing, so the old refresh tokens must die.
+        # The caller keeps working: their access token is already issued and a
+        # fresh pair is returned below, so the dashboard does not bounce them
+        # to the login screen mid-action.
+        sesaun = 0
+        for token in OutstandingToken.objects.filter(user=user):
+            _blacklisted, kriadu = BlacklistedToken.objects.get_or_create(token=token)
+            sesaun += int(kriadu)
+
+        par = RefreshToken.for_user(user)
+
+        logger.warning(
+            'troka password: user=id=%s numeru_id=%s sesaun_taka=%s',
+            user.pk, user.numeru_id, sesaun,
+        )
+
+        return Response({
+            'detail': 'Password troka ho susesu.',
+            'sesaun_taka': sesaun,
+            'access': str(par.access_token),
+            'refresh': str(par),
+        })
