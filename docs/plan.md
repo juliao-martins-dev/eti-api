@@ -183,10 +183,13 @@ eti-dili/                          three independent git repositories
 | Refresh with rotation + blacklist-after-rotation | `core/settings.py` |
 | `GET /api/auth/me/`; `PATCH` replaces the photo only, deleting the old file | `accounts/views.py`, `serializers.py` |
 | Roster of **teachers and admins**, deactivated included | `accounts/views.py` `ProfesorViewSet` |
+| Qualification fields on the roster: `nivel_edukasaun` (+display), `area_estudu`, `disiplina_hanorin`, readable and writable | `accounts/serializers.py` |
+| Roster picklists served from `/api/konfig/`, so forms cannot drift from the model | `attendance/views.py` `KonfigView` |
 | Create a teacher → one-time `password_inisial` | `accounts/views.py` |
 | Soft (de)activation via `PATCH {is_active}` | `accounts/views.py` |
 | Irreversible delete behind the admin's own password, cascading to sheets/days/punches **and photo files** | `accounts/views.py` `destroy` |
 | Admin-set password reset (two matching fields) that revokes the teacher's sessions | `accounts/views.py` `reset_password` |
+| Self-service password change for any signed-in account, old password required; the only route by which an ADMIN can change a password | `accounts/views.py` `TrokaPasswordView` |
 | `eh_admin` / `rasik` guards on both destructive roster actions | `accounts/views.py` `_eh_admin` |
 | Auto-opening monthly sheet + day row on first punch | `attendance/models.py` `PrezensaManager.ba_loron` |
 | Check in / check out with photo + GPS evidence | `attendance/models.py` `checkin` / `checkout` / `_rejistu` |
@@ -311,7 +314,7 @@ personnel record.
 - Key fields: `numeru_id` (PositiveInteger, **unique, required**, min 1),
   `email` (unique), `naran_kompletu` (150), `role` (ADMIN/PROFESSOR, default
   PROFESSOR), `sexu` (MANE/FETO), `kargu` (120, free text),
-  `habilitasaun_literaria`, `disiplina_hanorin` (255), `nu_kontaktu`,
+  `disiplina_hanorin` (255), `nu_kontaktu`,
   `foto` (ImageField `fotos/`), `nivel_edukasaun` (choices), `area_estudu`.
 - `REQUIRED_FIELDS = ['numeru_id', 'naran_kompletu']`; ordering by name.
 - Relations: **one user has many monthly sheets** (`user.lista_prezensa`).
@@ -397,6 +400,7 @@ All paths **require the trailing slash**.
 | POST | `/api/auth/logout/` | Blacklist refresh token | Yes | `{refresh}` → 205 `{detail}`; 400 `{code: token_not_valid}` |
 | GET | `/api/auth/me/` | Own profile | Yes | → `{id, numeru_id, email, naran_kompletu, kargu, foto, role, role_display}` |
 | PATCH | `/api/auth/me/` | Replace profile photo | Yes | multipart `foto` (required) → full profile. Other fields ignored. `PUT` → 405 |
+| POST | `/api/auth/troka-password/` | Change **your own** password | Yes | `{password_tuan, password_foun, password_konfirma}` → `{detail, sesaun_taka, access, refresh}`. Revokes every other session; 403 `password_tuan_sala`, 400 `password_la_hanesan` / `password_hanesan_tuan` / `password_fraku` |
 | GET | `/api/prezensa/` | List own day rows | Yes | → `PrezensaSerializer[]` scoped to `request.user` |
 | GET | `/api/prezensa/{id}/` | One day row | Yes | → `PrezensaSerializer` |
 | GET | `/api/prezensa/ohin/` | Today + button state (creates row) | Yes | → day (`status`, `status_display`, …) + `sesaun`, `oras_tama`, `oras_fila`, `bele_checkin`, `bele_checkout`, `marka[]` |
@@ -671,8 +675,9 @@ below was found by reading the code on **2026-08-10**.
 | 11 | No size or dimension limit on uploads. A phone sends 3–8 MB per punch, ~4 punches/day/teacher, and nothing downscales them. |
 | 12 | Blacklist tables grow ~1 row per refresh; `flushexpiredtokens` is not scheduled anywhere. |
 | 13 | Logout cannot revoke an already-issued access token (≤15 min window) — inherent to stateless JWT, not a defect. |
-| 14 | **No self-service password change** for anyone: a teacher asks an admin, and an admin cannot change their own from the roster (`rasik`). Both go through `manage.py`. |
+| 14 | ~~No self-service password change~~ **Resolved 2026-08-12:** `POST /api/auth/troka-password/` lets any signed-in account change its own password with the old one, and is the only route by which an ADMIN can change a password. |
 | 15 | No frontend tests in either client; `tsc --noEmit` and `lint` are the only gates. |
+| 15a | `User.habilitasaun_literaria` is **vestigial**: on the published roster HABILITASAUN LITERÁRIA is a heading over `nivel_edukasaun` + `area_estudu`, not a column. It is exposed nowhere and always empty — a candidate for removal. |
 | 16 | Two virtualenvs (`eti-dili/env/`, `eti-api/venv/`). **UNVERIFIED** which is canonical; the running interpreter resolves to `eti-dili/env/`. |
 | 17 | `eti-api/plan.md` (System Flow) overlaps this document. Kept because it explains the request lifecycle in prose; keep both in sync or fold one in. |
 
