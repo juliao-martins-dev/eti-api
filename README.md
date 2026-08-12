@@ -91,6 +91,7 @@ Auth is `Authorization: Bearer <access>` on everything except login/refresh/veri
 | POST | `auth/logout/` | blacklist the refresh token | Bearer |
 | GET | `auth/me/` | own profile | Bearer |
 | PATCH | `auth/me/` | replace own photo (multipart, `foto` only) | Bearer |
+| POST | `auth/troka-password/` | change **your own** password — old + new twice; revokes other sessions, returns a fresh token pair | Bearer |
 
 ### Attendance — the teacher's own record
 
@@ -136,6 +137,7 @@ Always `{"detail": "<Tetun, displayable as-is>", "code": "...", ...extra}`:
 | `password_presiza` · `password_sala` | the caller's password is missing or wrong |
 | `password_la_hanesan` · `password_fraku` | the two fields differ, or Django's validators refused it |
 | `rasik` · `eh_admin` | the target is you, or an admin |
+| `password_tuan_sala` · `password_hanesan_tuan` | changing your own password: old one wrong, or new equals old |
 | `token_not_valid` | expired or blacklisted token |
 
 > **Clients: treat `duplicate` as success.** The punch *was* recorded; if the
