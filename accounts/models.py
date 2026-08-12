@@ -31,6 +31,29 @@ def foto_perfil(instance, filename):
     return naran_foto_uniku('fotos', filename)
 
 
+#: ARÉA ESTUDU as it appears on the school's roster. Served to the dashboard so
+#: an administrator picks from the list instead of retyping, but the field is
+#: deliberately **free text**: the source sheet itself carries variants
+#: ("Engenharia Civil" / "Engenaria", "Técnica Informática" / "Informatica"),
+#: and a choices field would reject a teacher whose area is simply new.
+AREA_ESTUDU_SUJERE = [
+    'Administração Público',
+    'Contabilidade',
+    'Educação',
+    'Eletrônica / Eletrica',
+    'Engenharia Civil',
+    'Engenaria',
+    'Económia',
+    'Gestão Informática',
+    'Hospitalidade e Turismo',
+    'Informatica',
+    'Ingenaria Industria',
+    'Multimedia',
+    'Sociologia',
+    'Técnica Informática',
+]
+
+
 class UserManager(BaseUserManager):
     """Manager for the custom user model, which logs in by email."""
 
@@ -84,11 +107,16 @@ class User(AbstractUser):
         FETO = 'FETO', _('Feto')
 
     class NivelEdukasaun(models.TextChoices):
+        # Ordered low to high. The labels are spelled the way the school's own
+        # "Dadus Professores" sheet spells them, so an administrator reading
+        # the dashboard sees the same words as the paper roster.
         ENSINU_SEKUNDARIU = 'ENSINU_SEKUNDARIU', _('Ensinu Sekundáriu')
         DIPLOMA = 'DIPLOMA', _('Diploma')
-        BACHARELATU = 'BACHARELATU', _('Bacharelatu')
+        FINALISTA = 'FINALISTA', _('Finalista')
+        UNIVERSITARIA = 'UNIVERSITARIA', _('Universitária')
+        BACHARELATU = 'BACHARELATU', _('Bacharelato')
         LICENCIADO = 'LICENCIADO', _('Licenciado')
-        POST_GRADUACAO = 'POST_GRADUACAO', _('Post Graduação')
+        POST_GRADUACAO = 'POST_GRADUACAO', _('Post Graduacao')
         MESTRADO = 'MESTRADO', _('Mestradu')
         DOUTORAMENTU = 'DOUTORAMENTU', _('Doutoramentu')
 
