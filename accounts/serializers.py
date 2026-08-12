@@ -5,7 +5,14 @@ from .models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """The profile the app shows in its header after login."""
+    """
+    The profile the app shows in its header after login, and the base every
+    other read view of an account extends -- see `ProfesorRosterSerializer`.
+
+    What is *not* here is as deliberate as what is: `is_active` and
+    `nu_kontaktu` belong to the roster an admin reads, not to the profile a
+    teacher reads about themselves.
+    """
 
     role_display = serializers.CharField(source='get_role_display', read_only=True)
     nivel_edukasaun_display = serializers.CharField(
@@ -31,45 +38,35 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class ProfesorRosterSerializer(serializers.ModelSerializer):
+class ProfesorRosterSerializer(UserSerializer):
     """
-    One row of the dashboard's teacher roster (plan R1). Includes the fields
-    the roster table shows on top of the auth profile: sexu, nu_kontaktu and
-    the is_active flag behind the "Dezativadu" badge.
+    One row of the dashboard's teacher roster (plan R1).
+
+    The roster is the auth profile plus the three columns only an admin sees:
+    `sexu`, `nu_kontaktu`, and the `is_active` flag behind the "Dezativadu"
+    badge. Extending `UserSerializer` says that in the code instead of
+    restating twelve field names that then have to be kept in step by hand.
+
+    (HABILITASAUN LITERÁRIA on the printed roster is a heading over
+    `nivel_edukasaun` + `area_estudu`, not a column of its own, so the pair is
+    what the dashboard shows -- both are inherited.)
     """
 
-    role_display = serializers.CharField(source='get_role_display', read_only=True)
-    nivel_edukasaun_display = serializers.CharField(
-        source='get_nivel_edukasaun_display', read_only=True
-    )
-
-    class Meta:
-        model = User
-        fields = [
-            'id',
-            'numeru_id',
-            'email',
-            'naran_kompletu',
-            'kargu',
-            'foto',
-            'role',
-            'role_display',
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + [
             'sexu',
             'nu_kontaktu',
             'is_active',
-            # HABILITASAUN LITERÁRIA on the printed roster is a heading over
-            # these two columns, not a column of its own -- so the pair is what
-            # the dashboard shows.
-            'nivel_edukasaun',
-            'nivel_edukasaun_display',
-            'area_estudu',
-            'disiplina_hanorin',
         ]
         read_only_fields = fields
 
 
 class ProfesorKriaSerializer(serializers.ModelSerializer):
-    """Payload of the "Aumenta Profesór" modal (plan R3)."""
+    """
+    Payload of the "Aumenta Profesór" modal (plan R3), and the allowlist of
+    what an admin may write about a teacher at all -- `role`, `password` and
+    `is_staff` are absent on purpose, so no client can grant itself anything.
+    """
 
     class Meta:
         model = User
@@ -79,31 +76,37 @@ class ProfesorKriaSerializer(serializers.ModelSerializer):
         ]
 
 
-class ProfesorAtualizaSerializer(serializers.ModelSerializer):
-    """PATCH payload -- any subset of R3, plus the soft is_active toggle (R4)."""
-
-    class Meta:
-        model = User
-        fields = [
-            'numeru_id',
-            'naran_kompletu',
-            'email',
-            'kargu',
-            'nu_kontaktu',
-            'sexu',
-            'is_active',
-            'nivel_edukasaun',
-            'area_estudu',
-            'disiplina_hanorin',
-        ]
-
-
-class ProfesorResetPasswordSerializer(serializers.Serializer):
+class ProfesorAtualizaSerializer(ProfesorKriaSerializer):
     """
-    POST /api/profesor/{id}/reset-password/ -- the admin types the new password
-    twice. Both copies travel and the server compares them, so a mismatched
-    form cannot slip through a client that forgot to check.
+    PATCH payload -- any subset of R3, plus the soft is_active toggle (R4).
+
+    Editing a teacher is creating one plus the ability to deactivate, so this
+    extends the create allowlist rather than restating it: a field added to
+    the modal becomes editable in the same commit, and the two lists cannot
+    drift apart.
     """
+
+    class Meta(ProfesorKriaSerializer.Meta):
+        fields = ProfesorKriaSerializer.Meta.fields + ['is_active']
+
+
+class PasswordFounSerializer(serializers.Serializer):
+    """
+    The "type the new password twice" pair, shared by the admin reset and the
+    self-service change.
+
+    Both copies travel and the server compares them, so a mismatched form
+    cannot slip through a client that forgot to check.
+
+    Subclasses that add rules of their own must call `super().validate(attrs)`
+    first -- the two passwords matching is the precondition for every other
+    question worth asking about them.
+    """
+
+    #: Wording of the mismatch, overridden where "the new one" needs saying.
+    #: Only the `code` reaches a client: both views answer with their own
+    #: `detail` (see `ProfesorViewSet.reset_password`, `TrokaPasswordView`).
+    ERRU_LA_HANESAN = 'Password rua la hanesan.'
 
     password_foun = serializers.CharField(write_only=True, trim_whitespace=False)
     password_konfirma = serializers.CharField(write_only=True, trim_whitespace=False)
@@ -111,12 +114,23 @@ class ProfesorResetPasswordSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs['password_foun'] != attrs['password_konfirma']:
             raise serializers.ValidationError(
-                {'detail': 'Password rua la hanesan.', 'code': 'password_la_hanesan'}
+                {'detail': self.ERRU_LA_HANESAN, 'code': 'password_la_hanesan'}
             )
         return attrs
 
 
-class TrokaPasswordSerializer(serializers.Serializer):
+class ProfesorResetPasswordSerializer(PasswordFounSerializer):
+    """
+    POST /api/profesor/{id}/reset-password/ -- the admin types the new password
+    twice for a teacher who lost theirs.
+
+    The old password is deliberately *not* asked for: an admin resetting an
+    account cannot possibly know it. That is the whole difference from
+    `TrokaPasswordSerializer`, and the reason the two stay separate.
+    """
+
+
+class TrokaPasswordSerializer(PasswordFounSerializer):
     """
     POST /api/auth/troka-password/ -- the signed-in account changes its own
     password.
@@ -126,16 +140,12 @@ class TrokaPasswordSerializer(serializers.Serializer):
     enough to lock the real owner out.
     """
 
+    ERRU_LA_HANESAN = 'Password foun rua la hanesan.'
+
     password_tuan = serializers.CharField(write_only=True, trim_whitespace=False)
-    password_foun = serializers.CharField(write_only=True, trim_whitespace=False)
-    password_konfirma = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate(self, attrs):
-        if attrs['password_foun'] != attrs['password_konfirma']:
-            raise serializers.ValidationError(
-                {'detail': 'Password foun rua la hanesan.',
-                 'code': 'password_la_hanesan'}
-            )
+        attrs = super().validate(attrs)
         if attrs['password_foun'] == attrs['password_tuan']:
             raise serializers.ValidationError(
                 {'detail': "Password foun tenke la hanesan ho password tuan.",
