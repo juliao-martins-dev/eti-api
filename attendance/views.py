@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounts.models import AREA_ESTUDU_SUJERE
 from accounts.permissions import EhAdmin
 
 from .models import (
@@ -522,14 +523,25 @@ class ListaPrezensaViewSet(mixins.ListModelMixin,
 class KonfigView(APIView):
     """
     The scheduled times and geofence settings the dashboard's Konfig panel
-    shows (plan R8). The school's coordinates are deliberately excluded --
-    publishing the exact geofence centre helps nobody but a spoofer.
+    shows (plan R8), plus the roster picklists so the forms do not hardcode
+    them. The school's coordinates are deliberately excluded -- publishing the
+    exact geofence centre helps nobody but a spoofer.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        User = get_user_model()
         return Response({
+            # Roster picklists. `nivel_edukasaun` is a closed set, so the form
+            # renders a <select>; `area_estudu` is free text with these as
+            # suggestions, because the school's own sheet spells some areas
+            # more than one way and new areas do appear.
+            'nivel_edukasaun': [
+                {'value': v, 'label': str(l)} for v, l in User.NivelEdukasaun.choices
+            ],
+            'area_estudu_sujere': AREA_ESTUDU_SUJERE,
+            'sexu': [{'value': v, 'label': str(l)} for v, l in User.Sexu.choices],
             'oras_dader_tama': Prezensa.ORAS_DADER_TAMA,
             'oras_dader_fila': Prezensa.ORAS_DADER_FILA,
             'oras_lorokraik_tama': Prezensa.ORAS_LOROKRAIK_TAMA,
