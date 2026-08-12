@@ -38,6 +38,58 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
+def kode_erru(errors):
+    """
+    The `code` a serializer's `validate()` attached to its ValidationError.
+
+    DRF rewraps the dict we raised, so the code arrives as
+    `{'code': [ErrorDetail('password_la_hanesan')]}` -- a list, which is why
+    reading `errors['code']` directly never matched and the callers fell back
+    to searching the stringified dict. That fallback also matched an error
+    whose *message* merely contained the word.
+    """
+    valor = errors.get('code')
+    if isinstance(valor, (list, tuple)):
+        valor = valor[0] if valor else None
+    return str(valor) if valor is not None else None
+
+
+def taka_sesaun(user):
+    """
+    Blacklist every refresh token outstanding for `user`, returning how many
+    were still live.
+
+    Shared by the admin reset and the self-service change: both happen because
+    a password stopped being trustworthy, and a session opened under the old
+    one must not outlive it.
+    """
+    taka = 0
+    for token in OutstandingToken.objects.filter(user=user):
+        _blacklisted, kriadu = BlacklistedToken.objects.get_or_create(token=token)
+        taka += int(kriadu)
+    return taka
+
+
+def erru_password_fraku(senha, user):
+    """
+    Run Django's configured validators -- length, common passwords, all
+    numeric, similarity to the e-mail and name -- and return the coded 400 to
+    answer with, or None when the password is good enough.
+    """
+    try:
+        validate_password(senha, user=user)
+    except DjangoValidationError as exc:
+        return Response(
+            {
+                'detail': ' '.join(exc.messages),
+                'code': 'password_fraku',
+                'erros': exc.messages,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return None
+
+
 class LoginView(TokenObtainPairView):
     """POST email + password -> {access, refresh, user}."""
 
@@ -164,8 +216,12 @@ class ProfesorViewSet(mixins.ListModelMixin,
         except (TypeError, ValueError):
             pass  # not a number -- the serializer reports the malformed field
 
+        # `iexact`, because Django's normalize_email only lowercases the
+        # domain: "P.Prof@eti.tl" and "p.prof@eti.tl" were two accounts, and
+        # since login matches the address exactly, the teacher who typed the
+        # other case simply could not get in.
         email = data.get('email')
-        if email and existente.filter(email=email).exists():
+        if email and existente.filter(email__iexact=email).exists():
             return Response(
                 {'detail': "Email ne'e uza tiha ona.", 'code': 'duplicate_email'},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -185,9 +241,7 @@ class ProfesorViewSet(mixins.ListModelMixin,
         senha = get_random_string(12)
         profesor = User.objects.create_user(password=senha, **serializer.validated_data)
 
-        body = ProfesorRosterSerializer(
-            profesor, context=self.get_serializer_context()
-        ).data
+        body = self.get_serializer(profesor).data
         body['password_inisial'] = senha
         return Response(body, status=status.HTTP_201_CREATED)
 
@@ -201,13 +255,33 @@ class ProfesorViewSet(mixins.ListModelMixin,
             profesor, data=request.data, partial=True
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
 
-        return Response(
-            ProfesorRosterSerializer(
-                profesor, context=self.get_serializer_context()
-            ).data
-        )
+        # Deactivation is as destructive as the two guarded actions and was the
+        # only way to reach either forbidden outcome: an admin could switch
+        # their own account off and be refused at the very next request, with
+        # no way back except manage.py on the server. Read from validated_data
+        # so "false", 0 and False are all recognised.
+        if serializer.validated_data.get('is_active') is False:
+            if profesor.pk == request.user.pk:
+                return Response(
+                    {
+                        'detail': 'La bele dezativa konta rasik.',
+                        'code': 'rasik',
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if self._eh_admin(profesor):
+                return Response(
+                    {
+                        'detail': 'La bele dezativa konta administradór. '
+                                  'Muda role ba PROFESSOR uluk.',
+                        'code': 'eh_admin',
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+        serializer.save()
+        return Response(self.get_serializer(profesor).data)
 
     @action(detail=True, methods=['post'], url_path='reset-password')
     def reset_password(self, request, pk=None):
@@ -241,10 +315,9 @@ class ProfesorViewSet(mixins.ListModelMixin,
 
         payload = ProfesorResetPasswordSerializer(data=request.data)
         if not payload.is_valid():
-            erru = payload.errors
             # The "two fields differ" case carries its own code; anything else
             # is a plain missing-field error.
-            if erru.get('code') == 'password_la_hanesan' or 'password_la_hanesan' in str(erru):
+            if kode_erru(payload.errors) == 'password_la_hanesan':
                 return Response(
                     {'detail': 'Password rua la hanesan.', 'code': 'password_la_hanesan'},
                     status=status.HTTP_400_BAD_REQUEST,
@@ -258,19 +331,9 @@ class ProfesorViewSet(mixins.ListModelMixin,
             )
 
         senha = payload.validated_data['password_foun']
-        try:
-            # Django's configured validators: length, common passwords, all
-            # numeric, similarity to the email and name.
-            validate_password(senha, user=alvo)
-        except DjangoValidationError as exc:
-            return Response(
-                {
-                    'detail': ' '.join(exc.messages),
-                    'code': 'password_fraku',
-                    'erros': exc.messages,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        fraku = erru_password_fraku(senha, alvo)
+        if fraku:
+            return fraku
 
         alvo.set_password(senha)
         alvo.save(update_fields=['password'])
@@ -278,10 +341,7 @@ class ProfesorViewSet(mixins.ListModelMixin,
         # Old sessions must not survive a reset: a phone already logged in
         # would keep working, which defeats the point when the reset is
         # because the account was compromised.
-        sesaun = 0
-        for token in OutstandingToken.objects.filter(user=alvo):
-            _blacklisted, kriadu = BlacklistedToken.objects.get_or_create(token=token)
-            sesaun += int(kriadu)
+        sesaun = taka_sesaun(alvo)
 
         logger.warning(
             'password reset: actor=id=%s alvo=id=%s numeru_id=%s sesaun_taka=%s',
@@ -291,9 +351,7 @@ class ProfesorViewSet(mixins.ListModelMixin,
         return Response({
             'detail': f'Password foun ba {alvo.naran_kompletu} rai ona.',
             'sesaun_taka': sesaun,
-            'profesor': ProfesorRosterSerializer(
-                alvo, context=self.get_serializer_context()
-            ).data,
+            'profesor': self.get_serializer(alvo).data,
         })
 
     def destroy(self, request, *args, **kwargs):
@@ -408,18 +466,16 @@ class TrokaPasswordView(APIView):
     def post(self, request):
         payload = TrokaPasswordSerializer(data=request.data)
         if not payload.is_valid():
-            erru = payload.errors
-            for kodigu in ('password_la_hanesan', 'password_hanesan_tuan'):
-                if kodigu in str(erru):
-                    detalle = (
-                        'Password foun rua la hanesan.'
-                        if kodigu == 'password_la_hanesan'
-                        else 'Password foun tenke la hanesan ho password tuan.'
-                    )
-                    return Response(
-                        {'detail': detalle, 'code': kodigu},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+            detalle = {
+                'password_la_hanesan': 'Password foun rua la hanesan.',
+                'password_hanesan_tuan':
+                    'Password foun tenke la hanesan ho password tuan.',
+            }.get(kode_erru(payload.errors))
+            if detalle:
+                return Response(
+                    {'detail': detalle, 'code': kode_erru(payload.errors)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
                 {
                     'detail': 'Presiza hatama password tuan no password foun dala rua.',
@@ -437,17 +493,9 @@ class TrokaPasswordView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        try:
-            validate_password(dadus['password_foun'], user=user)
-        except DjangoValidationError as exc:
-            return Response(
-                {
-                    'detail': ' '.join(exc.messages),
-                    'code': 'password_fraku',
-                    'erros': exc.messages,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        fraku = erru_password_fraku(dadus['password_foun'], user)
+        if fraku:
+            return fraku
 
         user.set_password(dadus['password_foun'])
         user.save(update_fields=['password'])
@@ -457,10 +505,7 @@ class TrokaPasswordView(APIView):
         # The caller keeps working: their access token is already issued and a
         # fresh pair is returned below, so the dashboard does not bounce them
         # to the login screen mid-action.
-        sesaun = 0
-        for token in OutstandingToken.objects.filter(user=user):
-            _blacklisted, kriadu = BlacklistedToken.objects.get_or_create(token=token)
-            sesaun += int(kriadu)
+        sesaun = taka_sesaun(user)
 
         par = RefreshToken.for_user(user)
 
