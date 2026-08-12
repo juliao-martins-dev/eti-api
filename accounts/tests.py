@@ -495,9 +495,201 @@ class ProfesorApiTests(APITestCase):
         self.assertEqual(self.hamos(password=SENHA_ADMIN).status_code, 401)
         self.assertTrue(User.objects.filter(pk=self.profesor.pk).exists())
 
+    # -- Habilitasaun literária ------------------------------------------
+
+    def test_the_roster_exposes_the_qualification_fields(self):
+        self.profesor.nivel_edukasaun = User.NivelEdukasaun.LICENCIADO
+        self.profesor.area_estudu = 'Gestão Informática'
+        self.profesor.disiplina_hanorin = 'Sistema Base de Dados'
+        self.profesor.save()
+
+        linha = next(
+            r for r in self.client.get('/api/profesor/').json()
+            if r['id'] == self.profesor.pk
+        )
+        self.assertEqual(linha['nivel_edukasaun'], 'LICENCIADO')
+        self.assertEqual(linha['nivel_edukasaun_display'], 'Licenciado')
+        self.assertEqual(linha['area_estudu'], 'Gestão Informática')
+        self.assertEqual(linha['disiplina_hanorin'], 'Sistema Base de Dados')
+
+    def test_the_roster_writes_them_on_create(self):
+        response = self.client.post('/api/profesor/', {
+            'numeru_id': 54,
+            'naran_kompletu': 'Elio Espirito Santo da Costa Ximenes',
+            'email': 'elio@eti-dili.tl',
+            'kargu': 'Assistencia na área Informática',
+            'nivel_edukasaun': 'UNIVERSITARIA',
+            'area_estudu': 'Informatica',
+            'disiplina_hanorin': 'Tec. Multimedia',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.content)
+
+        foun = User.objects.get(numeru_id=54)
+        self.assertEqual(foun.nivel_edukasaun, 'UNIVERSITARIA')
+        self.assertEqual(foun.area_estudu, 'Informatica')
+        self.assertEqual(foun.disiplina_hanorin, 'Tec. Multimedia')
+
+    def test_the_roster_updates_them(self):
+        response = self.client.patch(
+            f'/api/profesor/{self.profesor.pk}/',
+            {'nivel_edukasaun': 'MESTRADO', 'area_estudu': 'Contabilidade'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.profesor.refresh_from_db()
+        self.assertEqual(self.profesor.nivel_edukasaun, 'MESTRADO')
+        self.assertEqual(self.profesor.area_estudu, 'Contabilidade')
+
+    def test_an_unknown_nivel_is_refused(self):
+        response = self.client.patch(
+            f'/api/profesor/{self.profesor.pk}/',
+            {'nivel_edukasaun': 'DOUTOR_INVENTADU'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('nivel_edukasaun', response.json())
+
+    def test_every_level_on_the_school_roster_is_a_valid_choice(self):
+        """
+        The published "Dadus Professores" sheet uses these six; Universitária
+        and Finalista were missing from the model until 2026-08-12.
+        """
+        for nivel in ('LICENCIADO', 'POST_GRADUACAO', 'UNIVERSITARIA',
+                      'BACHARELATU', 'MESTRADO', 'FINALISTA'):
+            self.assertIn(nivel, User.NivelEdukasaun.values)
+
     def test_ordinary_teacher_cannot_use_the_roster(self):
         self.client.force_authenticate(self.profesor)
         self.assertEqual(self.client.get('/api/profesor/').status_code, 403)
         self.assertEqual(
             self.client.post('/api/profesor/', {}, format='json').status_code, 403
         )
+
+
+class TrokaPasswordTests(APITestCase):
+    """`POST /api/auth/troka-password/` -- change your own password."""
+
+    URL = '/api/auth/troka-password/'
+    TUAN = 'SenhaTuan-2026'
+    FOUN = 'SenhaFoun-2026'
+
+    def setUp(self):
+        self.profesor = User.objects.create_user(
+            email='martinho@eti-dili.tl', numeru_id=6, password=self.TUAN,
+            naran_kompletu='Martinho Martins',
+        )
+        self.admin = User.objects.create_superuser(
+            email='joao@eti-dili.tl', numeru_id=1, password=self.TUAN,
+            naran_kompletu='João Gaio',
+        )
+        self.client.force_authenticate(self.profesor)
+
+    def troka(self, **corpu):
+        return self.client.post(self.URL, corpu, format='json')
+
+    def test_a_teacher_changes_their_own_password(self):
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun=self.FOUN,
+            password_konfirma=self.FOUN,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.profesor.refresh_from_db()
+        self.assertTrue(self.profesor.check_password(self.FOUN))
+        self.assertFalse(self.profesor.check_password(self.TUAN))
+        self.assertNotIn(self.FOUN, response.content.decode())
+
+    def test_an_admin_can_change_their_own_password(self):
+        """
+        The roster refuses `rasik` and `eh_admin`, so this route is the only
+        way an administrator can change a password at all.
+        """
+        self.client.force_authenticate(self.admin)
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun=self.FOUN,
+            password_konfirma=self.FOUN,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.check_password(self.FOUN))
+
+    def test_it_returns_a_working_token_pair(self):
+        """
+        The change revokes every refresh token, including the caller's own, so
+        a fresh pair comes back or the dashboard would bounce to /login in the
+        middle of the action.
+        """
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun=self.FOUN,
+            password_konfirma=self.FOUN,
+        )
+        body = response.json()
+        self.assertTrue(body['access'])
+
+        # Drop the forced auth *before* setting the header: DRF's
+        # force_authenticate(None) calls logout(), which clears credentials --
+        # the other order wipes the token we are trying to test.
+        self.client.force_authenticate(None)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {body["access"]}')
+        self.assertEqual(self.client.get('/api/auth/me/').status_code, 200)
+
+    def test_other_sessions_are_revoked(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        telefone = RefreshToken.for_user(self.profesor)
+        self.troka(
+            password_tuan=self.TUAN, password_foun=self.FOUN,
+            password_konfirma=self.FOUN,
+        )
+        response = self.client.post(
+            '/api/auth/refresh/', {'refresh': str(telefone)}, format='json'
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_the_old_password_must_be_right(self):
+        response = self.troka(
+            password_tuan='sala', password_foun=self.FOUN,
+            password_konfirma=self.FOUN,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()['code'], 'password_tuan_sala')
+        self.profesor.refresh_from_db()
+        self.assertTrue(self.profesor.check_password(self.TUAN))
+
+    def test_the_two_new_fields_must_match(self):
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun=self.FOUN,
+            password_konfirma='Seluk-2026',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'password_la_hanesan')
+
+    def test_the_new_password_must_differ_from_the_old(self):
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun=self.TUAN,
+            password_konfirma=self.TUAN,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'password_hanesan_tuan')
+
+    def test_a_weak_new_password_is_refused(self):
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun='123', password_konfirma='123',
+        )
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body['code'], 'password_fraku')
+        self.assertTrue(body['erros'])
+
+    def test_missing_fields_are_refused(self):
+        response = self.troka()
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()['code'], 'password_presiza')
+
+    def test_anonymous_is_refused(self):
+        self.client.force_authenticate(None)
+        response = self.troka(
+            password_tuan=self.TUAN, password_foun=self.FOUN,
+            password_konfirma=self.FOUN,
+        )
+        self.assertEqual(response.status_code, 401)
