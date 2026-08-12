@@ -170,7 +170,7 @@ class User(AbstractUser):
     nu_kontaktu = models.CharField(_('nu. kontaktu'), max_length=20, blank=True)
 
     # FOTO
-    foto = models.ImageField(_('foto'), upload_to=foto_perfil, blank=True, null=True)
+    foto = models.ImageField(_('foto'), default="fotos/default.jpg", upload_to=foto_perfil, blank=True, null=True)
 
     # NIVEL EDUKASAUN
     nivel_edukasaun = models.CharField(
