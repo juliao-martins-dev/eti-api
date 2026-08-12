@@ -5,7 +5,7 @@ read from the implemented code (`accounts/`, `attendance/`).
 
 **The dashboard is fully wired to this API** — all six routes run on live data.
 This document is now the reference for changing that integration, and the
-contract any other client should follow. Last verified **2026-08-10**.
+contract any other client should follow. Last verified **2026-08-12**.
 
 Base URL: `<API_HOST>/api/` — **every path ends with a trailing slash**.
 Without it Django 301-redirects, the POST body is dropped, and the request
@@ -26,6 +26,8 @@ dashboard never calls those).
 | POST | `auth/logout/` | `{refresh}` (Bearer required) | 205 `{detail}` |
 | POST | `auth/verify/` | `{token}` | 200 / 401 |
 | GET | `auth/me/` | — | the profile (sidebar chip) |
+| PATCH | `auth/me/` | multipart `foto` | replace your own photo |
+| POST | `auth/troka-password/` | `{password_tuan, password_foun, password_konfirma}` | change **your own** password — see §1.1 |
 
 `user` / `me` shape:
 
@@ -48,6 +50,58 @@ Rules the client must implement:
 - Admin-only routes below need an account with `is_staff=True` **or**
   `role="ADMIN"` — otherwise `403`.
 
+### 1.1 Change your own password — `POST /api/auth/troka-password/`
+
+For whoever is signed in, teacher or admin. **This is the only way an
+administrator can change a password at all**: the roster's `reset-password`
+refuses `rasik` (yourself) and `eh_admin` (another admin).
+
+```json
+{
+  "password_tuan": "SenhaTuan-2026",
+  "password_foun": "SenhaFoun-2026",
+  "password_konfirma": "SenhaFoun-2026"
+}
+```
+
+All three are required. It asks for the **old** password — unlike the admin
+reset, which cannot, since an admin resetting a forgotten password never knows
+it. Here the caller is changing their own credentials, so a borrowed unlocked
+browser must not be enough to take the account.
+
+**200**
+
+```json
+{
+  "detail": "Password troka ho susesu.",
+  "sesaun_taka": 2,
+  "access": "eyJhbGciOi…",
+  "refresh": "eyJhbGciOi…"
+}
+```
+
+| Code | `code` | When |
+| --- | --- | --- |
+| `200` | — | Changed |
+| `400` | `password_presiza` | A field is missing |
+| `400` | `password_la_hanesan` | `password_foun` ≠ `password_konfirma` |
+| `400` | `password_hanesan_tuan` | The new password equals the old one |
+| `400` | `password_fraku` + `erros[]` | Django's validators refused it |
+| `403` | `password_tuan_sala` | The old password is wrong |
+| `401` | — | Not signed in |
+
+**Two things the client must do:**
+
+1. **Store the returned `access` and `refresh`.** The change blacklists *every*
+   refresh token for that account — `sesaun_taka` counts them — so the pair you
+   were holding is dead. A fresh pair comes back in the body precisely so the
+   dashboard does not bounce the admin to `/login` in the middle of the action.
+   Persist both exactly as you do after `auth/refresh/`.
+2. Other devices are signed out, which is the point: this is what someone does
+   after losing a phone.
+
+The new password is **never** echoed back — the caller typed it.
+
 ## 2. Teacher roster — `/api/profesor/` (admin)
 
 ### `GET /api/profesor/`
@@ -65,9 +119,20 @@ rows — the API refuses `DELETE` and `reset-password` for them (`eh_admin`).
   "id": 3, "numeru_id": 1015, "email": "ana@eti-dili.tl",
   "naran_kompletu": "Ana Paula Ximenes", "kargu": "Profesóra Matemátika",
   "foto": null, "role": "PROFESSOR", "role_display": "Professór",
-  "sexu": "FETO", "nu_kontaktu": "+670 7810 3345", "is_active": true
+  "sexu": "FETO", "nu_kontaktu": "+670 7810 3345", "is_active": true,
+  "nivel_edukasaun": "LICENCIADO", "nivel_edukasaun_display": "Licenciado",
+  "area_estudu": "Gestão Informática",
+  "disiplina_hanorin": "Sistema Base de Dados & Tec. Multimedia"
 }]
 ```
+
+**HABILITASAUN LITERÁRIA** on the printed roster is a heading spanning two
+columns, not a column of its own — so it arrives as the pair
+`nivel_edukasaun` + `area_estudu`. `nivel_edukasaun` is a closed set (render a
+`<select>` from `konfig.nivel_edukasaun`); `area_estudu` is **free text**
+(render an `<input list=…>` from `konfig.area_estudu_sujere`) because the
+school's own sheet spells some areas more than one way and new areas appear.
+All three are writable through POST and PATCH.
 
 Use it to join `nu_kontaktu` into the Painel "seidauk marka" list and to fill
 the teacher `<select>` on Prezensa/Relatóriu.
@@ -295,9 +360,21 @@ For the Konfig panel — values now really come from the server.
   "oras_dader_tama": "08:00:00", "oras_dader_fila": "12:00:00",
   "oras_lorokraik_tama": "13:30:00", "oras_lorokraik_fila": "17:30:00",
   "limite_sesaun": "13:00:00",
-  "eskola_raiu_metru": 100.0, "eskola_obriga_fatin": true
+  "eskola_raiu_metru": 100.0, "eskola_obriga_fatin": true,
+
+  "nivel_edukasaun": [
+    {"value": "FINALISTA", "label": "Finalista"},
+    {"value": "UNIVERSITARIA", "label": "Universitária"},
+    {"value": "LICENCIADO", "label": "Licenciado"}
+  ],
+  "area_estudu_sujere": ["Gestão Informática", "Educação", "Económia"],
+  "sexu": [{"value": "MANE", "label": "Mane"}, {"value": "FETO", "label": "Feto"}]
 }
 ```
+
+The three picklists are served here so the roster form never hardcodes what
+the model owns — add a level in Django and the dashboard picks it up with no
+frontend change.
 
 Read-only; the school's coordinates are deliberately never included.
 
@@ -356,8 +433,10 @@ Errors are `400/403/404` with `{detail, code?, ...extra}`:
 | `password_presiza` / `password_sala` | `profesor` DELETE | keep the modal open, clear both password fields |
 | `rasik` | `profesor` DELETE / reset-password | "La bele … konta rasik.", close the modal |
 | `eh_admin` | `profesor` DELETE / reset-password | admin rows are read-only; hide both buttons |
-| `password_la_hanesan` | reset-password | the two fields differ — should be caught by the form first |
-| `password_fraku` | reset-password | show `erros[]` under the field |
+| `password_la_hanesan` | reset-password, troka-password | the two new-password fields differ — should be caught by the form first |
+| `password_fraku` | reset-password, troka-password | show `erros[]` under the field |
+| `password_tuan_sala` | troka-password | wrong current password — keep the modal open, clear that field only |
+| `password_hanesan_tuan` | troka-password | the new password equals the old one |
 | `token_not_valid` | refresh/logout | refresh → re-login |
 | — (`403`) | any admin route | account lacks `EhAdmin`; send to login or hide UI |
 
@@ -385,9 +464,6 @@ older `clock_*` spellings are gone from the wire entirely.
 
 ## 10. Not implemented (yet)
 
-- **Self-service password change** — a teacher cannot change their own
-  password, and an admin cannot change theirs from the roster (`rasik`). Both
-  go through `manage.py` or Django admin for now.
 - **E-mail delivery** of passwords — neither the initial one nor a reset is
   sent anywhere. Both are handed over in person, which is why each is shown
   once in a copy-able card.
