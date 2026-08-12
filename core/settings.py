@@ -138,18 +138,22 @@ DATABASES = {
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
+# Django's own validators, subclassed in `accounts.validators` so they refuse
+# a password in Tetun. The rules are untouched -- only the wording, because
+# validate_password was the one place this API answered in English, and it did
+# so exactly where someone is being told what to fix.
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        'NAME': 'accounts.validators.HanesanDadusValidator',
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'NAME': 'accounts.validators.TamanMinimuValidator',
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        'NAME': 'accounts.validators.PasswordKomunValidator',
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        'NAME': 'accounts.validators.NumeruDeitValidator',
     },
 ]
 
