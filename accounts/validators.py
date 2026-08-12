@@ -57,7 +57,7 @@ class HanesanDadusValidator(UserAttributeSimilarityValidator):
             naran = (exc.params or {}).get('verbose_name', _('dadus konta'))
             raise ValidationError(
                 _("Password ne'e hanesan liu ho %(verbose_name)s. "
-                  "Favor hili password ne'ebé la iha ita-nia dadus."),
+                  "Favor hili password ne'ebe la iha ita-nia dadus."),
                 code='password_too_similar',
                 params={'verbose_name': naran},
             )
@@ -74,13 +74,13 @@ class PasswordKomunValidator(CommonPasswordValidator):
             super().validate(password, user)
         except ValidationError:
             raise ValidationError(
-                _("Password ne'e komún tebes no fasil atu adivinha. "
-                  "Favor hili ida seluk."),
+                _("Password ne'e komun tebes no fasil atu sik. "
+                  "Favor hili seluk."),
                 code='password_too_common',
             )
 
     def get_help_text(self):
-        return _("Password la bele ida ne'ebé komún tebes.")
+        return _("Password la bele ida ne'ebe komun liu.")
 
 
 class NumeruDeitValidator(NumericPasswordValidator):
@@ -91,7 +91,7 @@ class NumeruDeitValidator(NumericPasswordValidator):
             super().validate(password, user)
         except ValidationError:
             raise ValidationError(
-                _("Password ne'e numeru de'it. Tenke iha letra ka símbolu mós."),
+                _("Password ne'e numeru de'it. Tenke iha letra ka simbolu."),
                 code='password_entirely_numeric',
             )
 
