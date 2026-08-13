@@ -1,0 +1,68 @@
+name: tests
+
+# The suite is the only thing standing between a refactor and a teacher's
+# attendance record, so it runs on every push and every pull request rather
+# than only when somebody remembers.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eti_ci
+        ports:
+          - 5432:5432
+        # Without this the first migration races the server's startup.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # CI-only values. The real ones live in .env, which is never committed.
+      SECRET_KEY: ci-only-not-a-real-secret-key-0123456789
+      DEBUG: 'False'
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: eti_ci
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      # Pinned so the geofence tests do not depend on a deployment's choice.
+      ESKOLA_LATITUDE: '-8.552336'
+      ESKOLA_LONGITUDE: '125.541603'
+      ESKOLA_RAIU_METRU: '100'
+      ESKOLA_OBRIGA_FATIN: 'True'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check for model changes with no migration
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Deployment checks
+        run: python manage.py check --deploy --fail-level ERROR
+
+      - name: Run the suite
+        run: python manage.py test --noinput --verbosity 2
