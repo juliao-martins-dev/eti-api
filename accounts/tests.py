@@ -2,11 +2,14 @@ import os
 import tempfile
 from datetime import date
 from io import BytesIO
+from unittest import mock
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from PIL import Image
 from rest_framework.test import APITestCase
+from rest_framework.throttling import ScopedRateThrottle
 
 from .models import User
 
@@ -758,3 +761,68 @@ class TrokaPasswordTests(APITestCase):
             password_konfirma=self.FOUN,
         )
         self.assertEqual(response.status_code, 401)
+
+
+# Three attempts a minute, so the tests do not have to make twenty.
+#
+# Patched onto the throttle class rather than through override_settings:
+# DRF reads DEFAULT_THROTTLE_RATES **once**, into the class attribute
+# SimpleRateThrottle.THROTTLE_RATES, so overriding the setting swaps the dict
+# api_settings points at while the throttle goes on reading the original.
+THROTTLE_TESTE = mock.patch.dict(
+    ScopedRateThrottle.THROTTLE_RATES, {'login': '3/min'}
+)
+
+
+@THROTTLE_TESTE
+class LoginThrottleTests(APITestCase):
+    """
+    Login is the only route that takes a password from a caller with no token,
+    which makes it the only one worth rate limiting -- and the only one an
+    attacker can hammer without first stealing a session.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+        User.objects.create_user(
+            email='martinho@eti-dili.tl', password=SENHA, numeru_id=6,
+            naran_kompletu='Martinho Martins',
+        )
+
+    def login(self, password):
+        return self.client.post(
+            '/api/auth/login/',
+            {'email': 'martinho@eti-dili.tl', 'password': password},
+            format='json',
+        )
+
+    def test_guessing_is_refused_once_the_rate_is_spent(self):
+        for tentativa in range(3):
+            self.assertEqual(self.login('sala-sala').status_code, 401, tentativa)
+
+        # The fourth is refused by the throttle, not by the password check --
+        # which is the point: guessing stops costing the attacker nothing.
+        response = self.login('sala-sala')
+        self.assertEqual(response.status_code, 429, response.content)
+
+        # In Tetun, like every other error this API produces, and with a
+        # Retry-After the clients can act on.
+        detalle = response.json()['detail']
+        self.assertIn('Koko login barak liu', detalle)
+        self.assertIn('segundu', detalle)
+        self.assertIn('Retry-After', response.headers)
+
+    def test_a_spent_rate_blocks_even_the_right_password(self):
+        """
+        Deliberate: once the budget for an address is gone it is gone, or an
+        attacker would learn which guess was correct from the status code.
+        """
+        for _ in range(3):
+            self.login('sala-sala')
+        self.assertEqual(self.login(SENHA).status_code, 429)
+
+    def test_an_ordinary_login_is_not_throttled(self):
+        response = self.login(SENHA)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIn('access', response.json())
