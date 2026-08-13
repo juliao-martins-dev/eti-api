@@ -670,7 +670,9 @@ below was found by reading the code on **2026-08-10**.
 | --- | --- |
 | 8 | **No project models in Django admin** — the stubs are empty. Acceptable now that `eti-dashboard` covers review, but there is no fallback if the dashboard is down. |
 | 9 | `ESKOLA_OBRIGA_FATIN=False` is set in `eti-api/.env` for testing — **the geofence is currently disabled**; punches from anywhere are accepted. Must be `True` before real use. |
-| 10 | `SECRET_KEY` still carries the `django-insecure-` prefix and `ALLOWED_HOSTS=*`. |
+| 10 | `SECRET_KEY` still carries the `django-insecure-` prefix and `ALLOWED_HOSTS=*`. **Both are go-live tasks, not casual ones:** rotating the key invalidates every issued JWT, logging every teacher out once. The rest of the deployment hardening (HSTS, SSL redirect, secure cookies, nosniff, DENY framing) is now applied automatically whenever `DEBUG=False` — see `core/settings.py`. |
+| 10a | ~~`requirements.txt` cannot build a working project~~ **Resolved 2026-08-13:** `django-cors-headers` was in `INSTALLED_APPS` and `MIDDLEWARE` but missing from the pins, so a clean install came up dead. Now pinned at 4.9.0. |
+| 10b | No pagination anywhere. `/api/profesor/` returns every account as a bare array and `/api/prezensa/hotu/` over a month is roughly *teachers × working days* rows (≈1,480 at 57 staff) with punches nested. Adding DRF pagination globally would wrap every list in `{count, results}` and break both clients, so it needs an opt-in design. |
 | 11a | **Punch photo paths are guessable by design** (`punch_6_martinho-martins_checkin_2026-08-10_dader.jpg`) and `MEDIA_ROOT` is served without auth. Serve `MEDIA_ROOT` privately in production and route photo access through `GET /api/marka/{id}/foto/`, or anyone with one URL can enumerate the rest. |
 | 11 | No size or dimension limit on uploads. A phone sends 3–8 MB per punch, ~4 punches/day/teacher, and nothing downscales them. |
 | 12 | Blacklist tables grow ~1 row per refresh; `flushexpiredtokens` is not scheduled anywhere. |
@@ -678,7 +680,7 @@ below was found by reading the code on **2026-08-10**.
 | 14 | ~~No self-service password change~~ **Resolved 2026-08-12:** `POST /api/auth/troka-password/` lets any signed-in account change its own password with the old one, and is the only route by which an ADMIN can change a password. |
 | 15 | No frontend tests in either client; `tsc --noEmit` and `lint` are the only gates. |
 | 15a | `User.habilitasaun_literaria` is **vestigial**: on the published roster HABILITASAUN LITERÁRIA is a heading over `nivel_edukasaun` + `area_estudu`, not a column. It is exposed nowhere and always empty — a candidate for removal. |
-| 16 | Two virtualenvs (`eti-dili/env/`, `eti-api/venv/`). **UNVERIFIED** which is canonical; the running interpreter resolves to `eti-dili/env/`. |
+| 16 | ~~Two virtualenvs, unverified which is canonical~~ **Settled 2026-08-13:** `eti-api/venv/` is canonical — Python 3.14.3, and it matches every pin in `requirements.txt` exactly. `eti-dili/env/` **does not exist** (no interpreter); the earlier note was wrong. Beware a third environment: a bare `python` on PATH resolves to `C:\Python314` with user site-packages, carrying Django 6.0.3, DRF 3.16.1 and **psycopg2** instead of the pinned 6.0.7 / 3.17.1 / psycopg 3 — tests pass there too, but it is not what the project declares. Always run through `eti-api/venv/Scripts/python.exe`. |
 | 17 | `eti-api/plan.md` (System Flow) overlaps this document. Kept because it explains the request lifecycle in prose; keep both in sync or fold one in. |
 
 ### Resolved — kept as a record of decisions
