@@ -16,8 +16,11 @@ from datetime import timedelta
 from pathlib import Path
 
 
+# DEBUG defaults to False: a deployment that forgets its .env should fail
+# closed, serving no tracebacks and no MEDIA_ROOT, rather than come up as a
+# debug server. Development sets DEBUG=True in .env explicitly.
 env = environ.Env(
-    DEBUG=(bool, True),
+    DEBUG=(bool, False),
 )
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -36,6 +39,23 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[])
+
+# Everything below is off in development, where the dashboard and the phones
+# talk to this server over plain HTTP on the school LAN. Turning them on
+# unconditionally would make the API unreachable from both.
+if not DEBUG:
+    # Behind a reverse proxy terminating TLS, so trust its protocol header.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = True
+    # One year, after the shorter values have been proven in production.
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    # The API answers with JWTs, not cookies, but /admin/ uses both.
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'
 
 
 # Application definition
@@ -61,7 +81,18 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # No default throttle: every other route already needs a token, and the
+    # phones poll `ohin` freely. Only the routes that accept a password from
+    # an anonymous caller opt in, by scope.
+    'DEFAULT_THROTTLE_RATES': {
+        'login': env('THROTTLE_LOGIN', default='20/min'),
+    },
 }
+
+# The school shares one public IP, so a rate here is counted across every
+# teacher on the wifi, not per person -- hence a generous default and an .env
+# override, so a morning that locks people out can be fixed without a deploy.
+# Login is the only anonymous password endpoint; the rest need a token first.
 
 SIMPLE_JWT = {
     # The app refreshes on almost every open anyway -- a teacher punches a few
@@ -193,3 +224,55 @@ ESKOLA_RAIU_METRU = env.float('ESKOLA_RAIU_METRU', default=100.0)
 # Escape hatch: set to False in .env to go back to recording out-of-radius
 # punches with `iha_eskola=False` instead of refusing them, without a deploy.
 ESKOLA_OBRIGA_FATIN = env.bool('ESKOLA_OBRIGA_FATIN', default=True)
+
+
+# Logging
+# The views log a warning for every deletion, password reset and password
+# change -- who did it, to whom, and how many sessions it closed. Without a
+# configuration those lines went to the console and died with the process,
+# which is no use at all for the one thing they exist to answer: "who removed
+# this teacher's year of attendance?" They now also go to a rotating file.
+
+# `env.path` returns django-environ's own Path type, which has no mkdir --
+# take the string and keep pathlib.
+LOG_DIR = Path(env.str('LOG_DIR', default=str(BASE_DIR / 'logs')))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'auditu': {
+            'format': '{asctime} {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'auditu',
+        },
+        'auditu': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'auditu.log',
+            # ~50 MB of history in total, which at this school's volume is
+            # years -- the audit trail should outlive the incident it explains.
+            'maxBytes': 5 * 1024 * 1024,
+            'backupCount': 10,
+            'formatter': 'auditu',
+            'encoding': 'utf-8',
+        },
+    },
+    'loggers': {
+        'accounts': {
+            'handlers': ['console', 'auditu'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'attendance': {
+            'handlers': ['console', 'auditu'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
