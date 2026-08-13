@@ -5,10 +5,12 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.crypto import get_random_string
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import Throttled
 from rest_framework.generics import RetrieveUpdateAPIView
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import (
@@ -90,10 +92,38 @@ def erru_password_fraku(senha, user):
     return None
 
 
+class LoginBarakLiu(Throttled):
+    """
+    The 429 in Tetun.
+
+    DRF's own wording is English, and this is the one error a teacher standing
+    at the door will actually see -- the same reason `accounts.validators`
+    exists. `wait` is filled in by DRF from the throttle.
+    """
+
+    default_detail = 'Koko login barak liu.'
+    extra_detail_singular = 'Favor hein segundu {wait} molok koko fali.'
+    extra_detail_plural = 'Favor hein segundu {wait} molok koko fali.'
+    default_code = 'login_barak_liu'
+
+
 class LoginView(TokenObtainPairView):
-    """POST email + password -> {access, refresh, user}."""
+    """
+    POST email + password -> {access, refresh, user}.
+
+    The one route that takes a password from a caller holding no token, so the
+    one route worth rate limiting: everything else already requires a valid
+    access token to reach. The rate is `THROTTLE_LOGIN` in .env, because the
+    whole school shares one public IP and a limit that is right for the
+    internet can be wrong for a staffroom at eight in the morning.
+    """
 
     serializer_class = LoginSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
+
+    def throttled(self, request, wait):
+        raise LoginBarakLiu(wait)
 
 
 class LogoutView(APIView):
