@@ -14,6 +14,9 @@ staticfiles/
 # Uploaded files: teacher photos and punch evidence.
 media/
 
+# Audit trail written at runtime (LOG_DIR).
+logs/
+
 # Editors / OS
 .vscode/
 .idea/
