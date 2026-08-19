@@ -10,6 +10,30 @@ This project keeps that exact structure and replaces the two things paper could
 not verify: **the time is stamped by the server**, and **the signature becomes a
 selfie plus the coordinates the phone was standing at.**
 
+## Kona-ba ETI Dili
+
+**Escola Técnica Informática de Díli (ETI Dili)** mak eskola téknika privadu ida
+iha Rua Fomento II, Comoro, Dili, Timor-Leste. **Fundasaun Klibur Mata Dalan
+(FKMD)** mak harii eskola ne'e. Rejistu estudante nian komesa iha loron **5
+Novembru 2009**, no inaugurasaun ofisiál akontese iha loron **30 Abril 2010**, ho
+Dr. José Luis Guterres (Vise-Primeiru-Ministru) no Dr. Paul Assis Belo
+(Vise-Ministru Edukasaun).
+
+Vizaun eskola nian mak atu hasa'e kualidade rekursu umanu timoroan nian, atu
+nune'e joven sira sai profisionál, matenek no edukadu, bele kompete iha merkadu
+servisu ka kontinua ba edukasaun superiór. ETI Dili oferese departamentu téknika
+sia: lingua programasaun, jestaun ekipamentu informátiku, multimédia,
+eletrisidade, eletrónika, konstrusaun sivil, komérsiu, kontabilidade, no
+hotelaria ho turizmu.
+
+Iha tinan 2025, eskola ne'e iha **profesór na'in 57**, **estudante ativu na'in
+835** (10º: 371, 11º: 240, 12º: 224), no **alumni na'in 2.727** husi tinan 2012
+to'o 2024.
+
+Informasaun kompletu kona-ba eskola: **<https://eti-dili.sch.tl>**
+
+---
+
 Three pieces talk to one API:
 
 ![System flow — mobile and dashboard clients over JWT to the Django REST API, PostgreSQL and MEDIA_ROOT](docs/flow.png)
