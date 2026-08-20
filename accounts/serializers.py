@@ -1,7 +1,25 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import User
+from .models import FOTO_DEFAULT, User, bele_hasai_foto
+
+
+
+def url_foto(user, context):
+    """
+    Absolute URL of a profile photo, falling back to the shared placeholder.
+
+    An account can reach the clients with an empty `foto`: the model default is
+    applied by Python, never by PostgreSQL, so anyone inserted by raw SQL -- or
+    created before migration 0006 added the default -- has `''` in the column.
+    Those used to serialize as `null`, which left every client to invent its
+    own idea of "no photo". Falling back here means an account without a photo
+    looks the same in the mobile app, the dashboard and the reports.
+    """
+    naran = user.foto.name or FOTO_DEFAULT
+    url = user.foto.storage.url(naran)
+    pedidu = context.get('request')
+    return pedidu.build_absolute_uri(url) if pedidu else url
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -18,6 +36,8 @@ class UserSerializer(serializers.ModelSerializer):
     nivel_edukasaun_display = serializers.CharField(
         source='get_nivel_edukasaun_display', read_only=True
     )
+    #: Never null -- an account with no photo of its own gets the placeholder.
+    foto = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -36,6 +56,9 @@ class UserSerializer(serializers.ModelSerializer):
             'disiplina_hanorin',
         ]
         read_only_fields = fields
+
+    def get_foto(self, obj):
+        return url_foto(obj, self.context)
 
 
 class ProfesorRosterSerializer(UserSerializer):
@@ -188,8 +211,11 @@ class FotoSerializer(serializers.ModelSerializer):
         tuan = instance.foto.name
         instance = super().update(instance, validated_data)
         # Drop the replaced file, otherwise every new photo leaves the old one
-        # behind in MEDIA_ROOT forever.
-        if tuan and tuan != instance.foto.name:
+        # behind in MEDIA_ROOT forever. `bele_hasai_foto` spares the shared
+        # placeholder: a teacher uploading their first photo is replacing
+        # FOTO_DEFAULT, and that file belongs to every other account that has
+        # not uploaded one yet.
+        if tuan != instance.foto.name and bele_hasai_foto(tuan):
             instance.foto.storage.delete(tuan)
         return instance
 
