@@ -11,7 +11,7 @@ from PIL import Image
 from rest_framework.test import APITestCase
 from rest_framework.throttling import ScopedRateThrottle
 
-from .models import User
+from .models import FOTO_DEFAULT, User
 
 MEDIA_TEMP = override_settings(MEDIA_ROOT=tempfile.mkdtemp())
 
@@ -826,3 +826,173 @@ class LoginThrottleTests(APITestCase):
         response = self.login(SENHA)
         self.assertEqual(response.status_code, 200, response.content)
         self.assertIn('access', response.json())
+
+
+class FotoDefaultTests(APITestCase):
+    """
+    `User.foto` starts on one shared file, `fotos/default.jpg`.
+
+    Every account created without a photo points at that same path, which
+    makes it unlike every other value the field ever holds: an uploaded photo
+    has a uuid name owned by exactly one row. Any code that treats the
+    placeholder as a private upload and deletes it takes the photo of every
+    other account still on it, and leaves every account created afterwards
+    pointing at a file that is gone.
+    """
+
+    def setUp(self):
+        media = tempfile.mkdtemp()
+        temp = override_settings(MEDIA_ROOT=media)
+        temp.enable()
+        self.addCleanup(temp.disable)
+
+        self.default = os.path.join(media, *FOTO_DEFAULT.split('/'))
+        os.makedirs(os.path.dirname(self.default), exist_ok=True)
+        with open(self.default, 'wb') as ficheiru:
+            ficheiru.write(foto().read())
+
+        self.admin = User.objects.create_superuser(
+            email='joao@eti-dili.tl', password=SENHA_ADMIN, numeru_id=1,
+            naran_kompletu='João Gaio',
+        )
+        self.profesor = User.objects.create_user(
+            email='martinho@eti-dili.tl', password=SENHA, numeru_id=6,
+            naran_kompletu='Martinho Martins',
+        )
+
+    def test_a_new_account_starts_on_the_shared_default(self):
+        self.assertEqual(self.profesor.foto.name, FOTO_DEFAULT)
+        self.assertTrue(os.path.exists(self.default))
+
+    def test_uploading_the_first_photo_keeps_the_shared_default(self):
+        """
+        The teacher is replacing FOTO_DEFAULT, not a file of their own. Before
+        the guard, this deleted the placeholder out from under everybody.
+        """
+        self.client.force_authenticate(self.profesor)
+        response = self.client.patch(
+            '/api/auth/me/', {'foto': foto('foun.jpg')}, format='multipart'
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        self.profesor.refresh_from_db()
+        self.assertNotEqual(self.profesor.foto.name, FOTO_DEFAULT)
+        self.assertTrue(os.path.exists(self.profesor.foto.path))
+        self.assertTrue(
+            os.path.exists(self.default),
+            'the shared placeholder must survive somebody uploading a photo',
+        )
+
+    def test_a_second_account_still_has_its_photo_afterwards(self):
+        """The point of the guard, stated as the consequence."""
+        seluk = User.objects.create_user(
+            email='benedito@eti-dili.tl', password=SENHA, numeru_id=8,
+            naran_kompletu='Benedito Soares',
+        )
+        self.client.force_authenticate(self.profesor)
+        self.client.patch(
+            '/api/auth/me/', {'foto': foto('foun.jpg')}, format='multipart'
+        )
+
+        seluk.refresh_from_db()
+        self.assertEqual(seluk.foto.name, FOTO_DEFAULT)
+        self.assertTrue(os.path.exists(seluk.foto.path))
+
+    def test_replacing_a_real_photo_still_deletes_the_old_file(self):
+        """The guard must not turn into "never delete anything"."""
+        self.client.force_authenticate(self.profesor)
+        self.client.patch(
+            '/api/auth/me/', {'foto': foto('un.jpg')}, format='multipart'
+        )
+        self.profesor.refresh_from_db()
+        dahuluk = self.profesor.foto.path
+
+        self.client.patch(
+            '/api/auth/me/', {'foto': foto('rua.jpg')}, format='multipart'
+        )
+        self.profesor.refresh_from_db()
+        self.assertNotEqual(self.profesor.foto.path, dahuluk)
+        self.assertFalse(os.path.exists(dahuluk))
+        self.assertTrue(os.path.exists(self.default))
+
+    def test_deleting_a_teacher_on_the_default_keeps_the_file(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(
+            f'/api/profesor/{self.profesor.pk}/',
+            {'password': SENHA_ADMIN}, format='json',
+        )
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertFalse(User.objects.filter(pk=self.profesor.pk).exists())
+        self.assertTrue(
+            os.path.exists(self.default),
+            'removing a teacher must not take the shared placeholder with it',
+        )
+
+    def test_deleting_a_teacher_with_a_real_photo_removes_it(self):
+        self.client.force_authenticate(self.profesor)
+        self.client.patch(
+            '/api/auth/me/', {'foto': foto('nia.jpg')}, format='multipart'
+        )
+        self.profesor.refresh_from_db()
+        caminhu = self.profesor.foto.path
+        self.assertTrue(os.path.exists(caminhu))
+
+        self.client.force_authenticate(self.admin)
+        self.client.delete(
+            f'/api/profesor/{self.profesor.pk}/',
+            {'password': SENHA_ADMIN}, format='json',
+        )
+        self.assertFalse(os.path.exists(caminhu))
+        self.assertTrue(os.path.exists(self.default))
+
+    def test_an_account_with_no_photo_serializes_to_the_placeholder(self):
+        """
+        A Django default is applied by Python and never by PostgreSQL, so an
+        account inserted by raw SQL reaches the clients with `foto = ''`. That
+        used to serialize as null and left each client to invent its own idea
+        of "no photo". It now resolves to the shared placeholder.
+        """
+        sem_foto = User.objects.create_user(
+            email='sem@eti-dili.tl', password=SENHA, numeru_id=77,
+            naran_kompletu='Sem Foto',
+        )
+        sem_foto.foto = ''          # what raw SQL leaves behind
+        sem_foto.save(update_fields=['foto'])
+
+        self.client.force_authenticate(sem_foto)
+        body = self.client.get('/api/auth/me/').json()
+
+        self.assertIsNotNone(body['foto'], 'foto must never be null')
+        self.assertTrue(body['foto'].endswith(FOTO_DEFAULT))
+
+    def test_the_roster_shows_the_placeholder_too(self):
+        sem_foto = User.objects.create_user(
+            email='sem@eti-dili.tl', password=SENHA, numeru_id=77,
+            naran_kompletu='Sem Foto',
+        )
+        sem_foto.foto = ''
+        sem_foto.save(update_fields=['foto'])
+
+        self.client.force_authenticate(self.admin)
+        linha = next(r for r in self.client.get('/api/profesor/').json()
+                     if r['numeru_id'] == 77)
+        self.assertTrue(linha['foto'].endswith(FOTO_DEFAULT))
+
+    def test_a_real_photo_is_still_returned_unchanged(self):
+        """The fallback must not override a photo the teacher actually has."""
+        self.client.force_authenticate(self.profesor)
+        self.client.patch(
+            '/api/auth/me/', {'foto': foto('nia.jpg')}, format='multipart'
+        )
+        self.profesor.refresh_from_db()
+
+        body = self.client.get('/api/auth/me/').json()
+        self.assertIn(self.profesor.foto.name, body['foto'])
+        self.assertFalse(body['foto'].endswith(FOTO_DEFAULT))
+
+    def test_the_system_check_notices_a_missing_placeholder(self):
+        from django.core.checks import run_checks
+        os.remove(self.default)
+        avisu = [a for a in run_checks() if a.id == 'accounts.W001']
+        self.assertEqual(len(avisu), 1, 'a missing placeholder must be reported')
+        self.assertIn('placeholder', avisu[0].msg)
