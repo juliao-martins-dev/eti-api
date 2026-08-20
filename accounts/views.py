@@ -22,7 +22,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from attendance.models import Marka
 
-from .models import User
+from .models import User, bele_hasai_foto
 from .permissions import EhAdmin
 from .serializers import (
     FotoSerializer,
@@ -451,7 +451,10 @@ def _fotos_profesor(profesor):
     of each punch -- as (storage, name) pairs so any storage backend works.
     """
     fotos = []
-    if profesor.foto:
+    # The shared placeholder is skipped: a teacher who never uploaded a photo
+    # still points at FOTO_DEFAULT, and removing them must not take the file
+    # every other such account depends on.
+    if bele_hasai_foto(profesor.foto.name):
         fotos.append((profesor.foto.storage, profesor.foto.name))
 
     for marka in Marka.objects.filter(prezensa__lista__profesor=profesor).only('foto'):
