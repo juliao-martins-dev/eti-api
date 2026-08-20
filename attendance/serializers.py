@@ -5,6 +5,8 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import serializers
 
+from accounts.serializers import url_foto
+
 from .models import ListaPrezensa, Marka, Prezensa, Sesaun, Tipu
 
 
@@ -193,10 +195,17 @@ class MarkaPrezensaSerializer(serializers.Serializer):
 class ProfesorSerializer(serializers.ModelSerializer):
     """Just enough of the teacher to identify a row in the daily report."""
 
+    #: Same fallback as `accounts.UserSerializer`, so a teacher with no photo
+    #: of their own looks the same on a report row as on their own profile.
+    foto = serializers.SerializerMethodField()
+
     class Meta:
         model = get_user_model()
         fields = ['id', 'numeru_id', 'naran_kompletu', 'kargu', 'foto']
         read_only_fields = fields
+
+    def get_foto(self, obj):
+        return url_foto(obj, self.context)
 
 
 class PrezensaProfesorSerializer(serializers.Serializer):
