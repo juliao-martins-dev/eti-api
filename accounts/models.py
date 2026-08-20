@@ -31,6 +31,26 @@ def foto_perfil(instance, filename):
     return naran_foto_uniku('fotos', filename)
 
 
+#: The placeholder an account starts on when nobody has uploaded a photo yet.
+#:
+#: Unlike every other value of `foto`, this is **one file shared by many rows**
+#: -- every account created without a photo points at this same path. Uploaded
+#: photos are the opposite: a uuid name owned by exactly one row.
+FOTO_DEFAULT = 'fotos/default.jpg'
+
+
+def bele_hasai_foto(naran):
+    """
+    Whether the file behind `naran` may be deleted from storage.
+
+    False for an empty name, and false for `FOTO_DEFAULT`. Deleting the shared
+    placeholder because *one* teacher replaced their photo would break the
+    photo of every other account still pointing at it, and leave every account
+    created afterwards referring to a file that is no longer there.
+    """
+    return bool(naran) and naran != FOTO_DEFAULT
+
+
 #: ARÉA ESTUDU as it appears on the school's roster. Served to the dashboard so
 #: an administrator picks from the list instead of retyping, but the field is
 #: deliberately **free text**: the source sheet itself carries variants
@@ -169,8 +189,16 @@ class User(AbstractUser):
     # NU. KONTAKTU
     nu_kontaktu = models.CharField(_('nu. kontaktu'), max_length=20, blank=True)
 
-    # FOTO
-    foto = models.ImageField(_('foto'), default="fotos/default.jpg", upload_to=foto_perfil, blank=True, null=True)
+    # FOTO -- starts on the shared placeholder; an upload replaces it with a
+    # uuid name owned by this row alone. The placeholder itself is never
+    # deleted, see `bele_hasai_foto`.
+    foto = models.ImageField(
+        _('foto'),
+        default=FOTO_DEFAULT,
+        upload_to=foto_perfil,
+        blank=True,
+        null=True,
+    )
 
     # NIVEL EDUKASAUN
     nivel_edukasaun = models.CharField(
